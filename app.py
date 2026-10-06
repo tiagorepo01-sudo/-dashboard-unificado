@@ -394,7 +394,7 @@ def load_qa():
             df[col] = df[col].astype(str).str.strip()
     return df
 
-def render_qa(df, source_name="QA Migración Jun–Jul"):
+def render_qa(df, source_name="QA Migración"):
     total       = len(df)
     completadas = (df[COL_COMP] == "Si").sum() if COL_COMP in df.columns else 0
     no_comp     = (df[COL_COMP] == "No").sum() if COL_COMP in df.columns else 0
@@ -739,7 +739,7 @@ def render_seg(df):
 # ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR · SELECTOR DE MÓDULO + FILTROS
 # ══════════════════════════════════════════════════════════════════════════════
-MODULOS = ["📊 Gestión NPS · Claro", "📡 QA Migración Jun–Jul", "📋 Seguimiento Derivaciones"]
+MODULOS = ["📊 Gestión NPS · Claro", "📡 QA Migración", "📋 Seguimiento Derivaciones"]
 
 with st.sidebar:
     st.markdown('<div class="sidebar-section" style="color:#1D6FE8">Módulo</div>', unsafe_allow_html=True)
