@@ -560,7 +560,9 @@ def load_seg():
     url = f"https://docs.google.com/spreadsheets/d/{HAINTECH_SHEET}/export?format=csv&gid=758087206"
     df = pd.read_csv(url, encoding="utf-8", on_bad_lines="skip")
     df.columns = df.columns.str.strip()
-    if "Fecha inicial" in df.columns:
+    if "SF" in df.columns:
+        df.rename(columns={"SF": "Fecha"}, inplace=True)
+    elif "Fecha inicial" in df.columns:
         df.rename(columns={"Fecha inicial": "Fecha"}, inplace=True)
     df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["Fecha"])
