@@ -557,7 +557,7 @@ SEG_GESTION_COLORS = {"INTERNO":"#1D6FE8","HAINTECH":"#0F9B8E"}
 
 @st.cache_data(ttl=300, show_spinner="Cargando datos Seguimiento…")
 def load_seg():
-    url = f"https://docs.google.com/spreadsheets/d/{HAINTECH_SHEET}/export?format=csv&gid=1058963747"
+    url = f"https://docs.google.com/spreadsheets/d/{HAINTECH_SHEET}/export?format=csv&gid=758087206"
     df = pd.read_csv(url, encoding="utf-8", on_bad_lines="skip")
     df.columns = df.columns.str.strip()
     if "Fecha inicial" in df.columns:
