@@ -103,6 +103,62 @@ def groupby_comp(df, group_col, comp_col):
     result["Pct_Comp"] = (result["Completadas"] / result["Total"] * 100).round(1)
     return result.fillna(0)
 
+AGENT_PALETTE = [
+    "#1D6FE8","#0F9B8E","#BA7517","#C83050","#7F77DD","#D85A30",
+    "#378ADD","#14b8a6","#a78bfa","#6A6A85","#888780","#4A4A5A",
+]
+
+def render_agente_dist(df, agent_col, accent, panel_key):
+    """Panel torta + lista de gestiones por agente/técnico."""
+    if df.empty or agent_col not in df.columns:
+        return
+    ag = df[agent_col].fillna("Sin asignar").value_counts().reset_index()
+    ag.columns = ["Agente","Total"]
+    ag["Pct"] = (ag["Total"] / ag["Total"].sum() * 100).round(1)
+    colors = [AGENT_PALETTE[i % len(AGENT_PALETTE)] for i in range(len(ag))]
+
+    st.markdown(f'<div class="panel" style="border-color:{accent}">', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">Gestiones por agente</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-sub">Distribución de órdenes/casos atendidos</div>', unsafe_allow_html=True)
+
+    tab_donut, tab_lista = st.tabs(["Torta", "Lista"])
+
+    with tab_donut:
+        fig = go.Figure(go.Pie(
+            labels=ag["Agente"], values=ag["Total"], hole=0.52,
+            marker_colors=colors,
+            textfont=dict(size=10), textinfo="percent",
+            hovertemplate="<b>%{label}</b><br>%{value} casos · %{percent}<extra></extra>",
+        ))
+        fig.add_annotation(
+            text=f"<b>{ag['Total'].sum()}</b><br><span style='font-size:9px'>total</span>",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=14, color="white", family="Barlow Condensed"),
+        )
+        fig.update_layout(
+            paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
+            margin=dict(l=0, r=0, t=4, b=30), height=300,
+            legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9),
+                        orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5),
+        )
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+    with tab_lista:
+        rows_html = ""
+        for i, row in ag.iterrows():
+            color = AGENT_PALETTE[i % len(AGENT_PALETTE)]
+            bar_w = min(int(row["Pct"]), 100)
+            rows_html += f"""<div class="rank-row">
+                <span class="rank-pos" style="color:{color};font-size:12px">{i+1}</span>
+                <span class="rank-name">{row['Agente']}</span>
+                <div class="rank-bar-wrap" style="width:80px"><div class="rank-bar-fill" style="width:{bar_w}%;background:{color}"></div></div>
+                <span class="rank-metric" style="color:{color}">{int(row['Total'])}</span>
+                <span class="rank-metric-sm">{row['Pct']}%</span>
+            </div>"""
+        st.markdown(f'<div style="max-height:280px;overflow-y:auto">{rows_html}</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MÓDULO 1 · GESTIÓN NPS · CLARO
@@ -344,6 +400,8 @@ def render_nps(df):
             st.dataframe(tbl, width="stretch", height=min(400, len(tbl)*35+40))
             st.download_button("⬇ Exportar CSV", tbl.to_csv().encode("utf-8"), "ranking_nps.csv", "text/csv", key="dl_nps")
 
+    render_agente_dist(df, "Soporte", NPS_ACCENT, "nps")
+
     # Tabla detalle NPS
     st.markdown(f'<div class="panel" style="border-color:{NPS_ACCENT}">', unsafe_allow_html=True)
     st.markdown('<div class="panel-title">Detalle de registros</div>', unsafe_allow_html=True)
@@ -525,6 +583,8 @@ def render_qa(df, source_name="QA Migración"):
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
             st.caption("🟢 ≥60%   🟡 40–60%   🔴 <40%")
         st.markdown('</div>', unsafe_allow_html=True)
+
+    render_agente_dist(df, "Soporte HAINTECH", QA_ACCENT, "qa")
 
     # Tabla detalle QA
     st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
@@ -717,6 +777,8 @@ def render_seg(df):
         chart_layout(fig, height=300); fig.update_layout(showlegend=False, margin=dict(l=8,r=110,t=14,b=8)); fig.update_xaxes(title_text="Órdenes")
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
+
+    render_agente_dist(df, "Soporte HAINTECH", SEG_ACCENT, "seg")
 
     # Tabla detalle Seguimiento
     st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
