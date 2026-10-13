@@ -663,7 +663,7 @@ def render_seg(df):
     </div>""", unsafe_allow_html=True)
 
     p_style = f'style="border-color:{SEG_ACCENT}"'
-    col1, col2, col3, col4 = st.columns([1.0, 1.3, 1.3, 1.1])
+    col1, col2, col3 = st.columns([1.0, 1.5, 1.2])
 
     with col1:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
@@ -684,28 +684,6 @@ def render_seg(df):
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col2:
-        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-title">Estado solicitud inicial</div>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-sub">Distribución de motivos de entrada</div>', unsafe_allow_html=True)
-        if not df.empty and "Estado Solicitud Inicial" in df.columns:
-            tb, tp = st.tabs(["Barras","Donut"])
-            cnt = df["Estado Solicitud Inicial"].value_counts().reset_index(); cnt.columns = ["Estado","Cantidad"]
-            cnt["Pct"] = (cnt["Cantidad"]/cnt["Cantidad"].sum()*100).round(1)
-            cnt["Color"] = cnt["Estado"].map(SEG_ESTADO_INI_COLORS).fillna("#64748b")
-            cnt = cnt.sort_values("Cantidad", ascending=True)
-            with tb:
-                fig = go.Figure(go.Bar(x=cnt["Cantidad"], y=cnt["Estado"], orientation="h", marker_color=cnt["Color"].tolist(),
-                    text=cnt.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1), textposition="outside", textfont=dict(size=10,color=TEXT_COLOR)))
-                chart_layout(fig, height=310); fig.update_layout(showlegend=False, margin=dict(l=8,r=90,t=14,b=8))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-            with tp:
-                fig = go.Figure(go.Pie(labels=cnt["Estado"], values=cnt["Cantidad"], hole=0.55, marker_colors=cnt["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
-                fig.add_annotation(text=f"<b>{total}</b><br><span style='font-size:9px'>órdenes</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14,color="white",family="Barlow Condensed"))
-                fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR,family=FONT_FAMILY), margin=dict(l=0,r=0,t=0,b=0), height=310, legend=dict(bgcolor=CHART_BG,bordercolor=GRID_COLOR,font=dict(size=9),x=1.0,y=0.5))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col3:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Estado solicitud final</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Resultado final después de la gestión</div>', unsafe_allow_html=True)
@@ -729,7 +707,7 @@ def render_seg(df):
                     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with col4:
+    with col3:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">% Completitud por día</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Tendencia diaria de órdenes completadas</div>', unsafe_allow_html=True)
@@ -742,6 +720,24 @@ def render_seg(df):
             fig.add_hline(y=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="50%", annotation_font=dict(color="#353545",size=9))
             chart_layout(fig, height=310); fig.update_yaxes(title_text="%", range=[0,108])
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    tec_col_seg = next((c for c in ["Tecnico Auditado","Técnico Auditado","tecnico auditado"] if c in df.columns), None)
+    if not df.empty and COL_COMP in df.columns and tec_col_seg:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Completitud por técnico</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">% completitud por técnico auditado</div>', unsafe_allow_html=True)
+        df_tec = df.copy()
+        df_tec[tec_col_seg] = df_tec[tec_col_seg].astype(str).str.strip().str.upper()
+        tec = groupby_comp(df_tec, tec_col_seg, COL_COMP).sort_values("Pct_Comp", ascending=True)
+        n_tec = len(tec)
+        fig = go.Figure()
+        for _, row in tec.iterrows():
+            c = "#0F9B8E" if row["Pct_Comp"] >= 50 else "#C83050"
+            fig.add_trace(go.Bar(x=[row["Pct_Comp"]], y=[row[tec_col_seg]], orientation="h", marker_color=c, text=f"{row['Pct_Comp']}%  ({int(row['Completadas'])}/{int(row['Total'])})", textposition="outside", textfont=dict(size=9,color=TEXT_COLOR), showlegend=False))
+        fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="meta 50%", annotation_font=dict(color="#353545",size=9), annotation_position="top")
+        chart_layout(fig, height=max(200, n_tec * 20)); fig.update_xaxes(range=[0,125], title_text="%"); fig.update_layout(margin=dict(l=8,r=120,t=10,b=8))
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
     col4, col5, col6 = st.columns([1.2, 0.9, 1.9])
@@ -806,6 +802,37 @@ def render_seg(df):
     st.dataframe(df_show, width="stretch", height=300, hide_index=True)
     st.download_button("⬇ Exportar CSV filtrado", df[cols_show].assign(Fecha=df["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"), "seguimiento_filtrado.csv", "text/csv", key="dl_seg_det")
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Panel lista: match Estado Inicial → Estado Final ─────────────────────────
+    if not df.empty and "Estado Solicitud Inicial" in df.columns and "Estado Solicitud Final" in df.columns:
+        flow = (
+            df[["Estado Solicitud Inicial","Estado Solicitud Final"]]
+            .replace("nan", pd.NA).dropna()
+            .groupby(["Estado Solicitud Inicial","Estado Solicitud Final"])
+            .size().reset_index(name="Cantidad")
+            .sort_values("Cantidad", ascending=False)
+        )
+        if not flow.empty:
+            st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-title">Estado de Solicitudes · inicial → final</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-sub">Combinaciones de estado de entrada y resultado final</div>', unsafe_allow_html=True)
+            total_flow = flow["Cantidad"].sum()
+            rows_html = ""
+            for _, row in flow.iterrows():
+                c_ini = SEG_ESTADO_INI_COLORS.get(row["Estado Solicitud Inicial"], "#4A90D9")
+                c_fin = SEG_ESTADO_FIN_COLORS.get(row["Estado Solicitud Final"], "#64748b")
+                pct   = round(row["Cantidad"] / total_flow * 100, 1)
+                bar_w = min(int(pct * 2), 100)
+                rows_html += f"""<div class="rank-row" style="gap:8px">
+                    <span style="font-size:11px;color:{c_ini};flex:1.1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{row['Estado Solicitud Inicial']}</span>
+                    <span style="color:#353545;font-size:13px;flex-shrink:0">→</span>
+                    <span style="font-size:11px;color:{c_fin};flex:1.1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{row['Estado Solicitud Final']}</span>
+                    <div class="rank-bar-wrap" style="width:60px;flex-shrink:0"><div class="rank-bar-fill" style="width:{bar_w}%;background:{c_ini}"></div></div>
+                    <span class="rank-metric" style="color:{c_ini};flex-shrink:0">{int(row['Cantidad'])}</span>
+                    <span class="rank-metric-sm" style="flex-shrink:0">{pct}%</span>
+                </div>"""
+            st.markdown(f'<div style="max-height:320px;overflow-y:auto">{rows_html}</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(f'<div class="dash-footer" style="border-color:{SEG_ACCENT}"><span>Fuente: Google Sheets · Seguimiento Derivaciones · Actualización automática cada 5 min</span><span>HAINTECH · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
 
