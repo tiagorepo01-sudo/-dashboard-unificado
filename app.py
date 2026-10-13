@@ -663,7 +663,7 @@ def render_seg(df):
     </div>""", unsafe_allow_html=True)
 
     p_style = f'style="border-color:{SEG_ACCENT}"'
-    col1, col2, col3 = st.columns([1.1, 1.6, 1.3])
+    col1, col2, col3, col4 = st.columns([1.0, 1.3, 1.3, 1.1])
 
     with col1:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
@@ -706,6 +706,30 @@ def render_seg(df):
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col3:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Estado solicitud final</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Resultado final después de la gestión</div>', unsafe_allow_html=True)
+        if not df.empty and "Estado Solicitud Final" in df.columns:
+            fc_all = df["Estado Solicitud Final"].replace("nan", pd.NA).dropna()
+            if not fc_all.empty:
+                tb_f, tp_f = st.tabs(["Barras","Donut"])
+                fc = fc_all.value_counts().reset_index(); fc.columns = ["Estado","Cantidad"]
+                fc["Pct"] = (fc["Cantidad"]/fc["Cantidad"].sum()*100).round(1)
+                fc["Color"] = fc["Estado"].map(SEG_ESTADO_FIN_COLORS).fillna("#64748b")
+                fc = fc.sort_values("Cantidad", ascending=True)
+                with tb_f:
+                    fig = go.Figure(go.Bar(x=fc["Cantidad"], y=fc["Estado"], orientation="h", marker_color=fc["Color"].tolist(),
+                        text=fc.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1), textposition="outside", textfont=dict(size=10,color=TEXT_COLOR)))
+                    chart_layout(fig, height=310); fig.update_layout(showlegend=False, margin=dict(l=8,r=90,t=14,b=8))
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                with tp_f:
+                    fig = go.Figure(go.Pie(labels=fc["Estado"], values=fc["Cantidad"], hole=0.55, marker_colors=fc["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
+                    fig.add_annotation(text=f"<b>{fc_all.count()}</b><br><span style='font-size:9px'>órdenes</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14,color="white",family="Barlow Condensed"))
+                    fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR,family=FONT_FAMILY), margin=dict(l=0,r=0,t=0,b=0), height=310, legend=dict(bgcolor=CHART_BG,bordercolor=GRID_COLOR,font=dict(size=9),x=1.0,y=0.5))
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col4:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">% Completitud por día</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Tendencia diaria de órdenes completadas</div>', unsafe_allow_html=True)
@@ -763,20 +787,6 @@ def render_seg(df):
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
             st.caption("🟢 1 derivación   🟡 2–3   🔴 4+")
         st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
-    st.markdown('<div class="panel-title">Estado Solicitud Final · distribución</div>', unsafe_allow_html=True)
-    st.markdown('<div class="panel-sub">Resultado final después de la gestión</div>', unsafe_allow_html=True)
-    if not df.empty and "Estado Solicitud Final" in df.columns:
-        fc = df["Estado Solicitud Final"].replace("nan", pd.NA).dropna().value_counts().reset_index(); fc.columns = ["Estado","Cantidad"]
-        fc["Pct"] = (fc["Cantidad"]/fc["Cantidad"].sum()*100).round(1)
-        fc["Color"] = fc["Estado"].map(SEG_ESTADO_FIN_COLORS).fillna("#64748b")
-        fc = fc.sort_values("Cantidad", ascending=True)
-        fig = go.Figure(go.Bar(x=fc["Cantidad"], y=fc["Estado"], orientation="h", marker_color=fc["Color"].tolist(),
-            text=fc.apply(lambda r: f"{r['Cantidad']}  ({r['Pct']}%)", axis=1), textposition="outside", textfont=dict(size=10,color=TEXT_COLOR)))
-        chart_layout(fig, height=300); fig.update_layout(showlegend=False, margin=dict(l=8,r=110,t=14,b=8)); fig.update_xaxes(title_text="Órdenes")
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-    st.markdown('</div>', unsafe_allow_html=True)
 
     render_agente_dist(df, "Soporte HAINTECH", SEG_ACCENT, "seg")
 
