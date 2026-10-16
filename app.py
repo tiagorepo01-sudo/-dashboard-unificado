@@ -627,6 +627,10 @@ def load_seg():
     df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["Fecha"])
     df["Semana"] = df["Fecha"].dt.isocalendar().week.astype(int)
+    if "Comuna" not in df.columns and len(df.columns) >= 3:
+        df.rename(columns={df.columns[2]: "Comuna"}, inplace=True)
+    if "Comuna" in df.columns:
+        df["Comuna"] = df["Comuna"].astype(str).str.strip()
     for col in [COL_COMP, COL_GESTION, "Estado Solicitud Inicial", "Estado Solicitud Final", "Soporte HAINTECH"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
@@ -911,6 +915,8 @@ with st.sidebar:
         estados_sel = st.multiselect("Estado Inicial", estados_disp, default=estados_disp)
         gestion_opts = ["Todas"] + sorted(df_raw[COL_GESTION].dropna().unique().tolist() if COL_GESTION in df_raw.columns else [])
         gestion_sel = st.selectbox("Gestión", gestion_opts)
+        comunas_disp = sorted(df_raw["Comuna"].dropna().unique().tolist()) if "Comuna" in df_raw.columns else []
+        comunas_sel = st.multiselect("Comuna", comunas_disp, default=comunas_disp)
         start = pd.Timestamp(date_range[0]) if len(date_range) >= 1 else df_raw["Fecha"].min()
         end   = pd.Timestamp(date_range[1]) if len(date_range) == 2 else df_raw["Fecha"].max()
         df = df_raw[(df_raw["Fecha"] >= start) & (df_raw["Fecha"] <= end)].copy()
@@ -919,6 +925,7 @@ with st.sidebar:
         if soporte_sel != "Todos" and "Soporte HAINTECH" in df.columns: df = df[df["Soporte HAINTECH"] == soporte_sel]
         if estados_sel and "Estado Solicitud Inicial" in df.columns: df = df[df["Estado Solicitud Inicial"].isin(estados_sel)]
         if gestion_sel != "Todas" and COL_GESTION in df.columns: df = df[df[COL_GESTION] == gestion_sel]
+        if comunas_sel and "Comuna" in df.columns: df = df[df["Comuna"].isin(comunas_sel)]
 
     st.markdown("---")
     st.markdown('<p style="font-size:10px;color:#353545;text-align:center">Datos actualizados automáticamente<br>desde Google Sheets</p>', unsafe_allow_html=True)
