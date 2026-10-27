@@ -882,7 +882,10 @@ def load_seg_oriente():
     if COL_DERIV in df.columns:
         df[COL_DERIV] = pd.to_numeric(df[COL_DERIV], errors="coerce")
 
-    # ── 3. Filtrar por técnicos de Oriente ────────────────────────────────────
+    # ── 3. Solo datos desde hoy en adelante ───────────────────────────────────
+    df = df[df["Fecha"] >= pd.Timestamp.today().normalize()]
+
+    # ── 4. Filtrar por técnicos de Oriente ────────────────────────────────────
     tec_col = next((c for c in ["Tecnico Auditado", "Técnico Auditado", "tecnico auditado"] if c in df.columns), None)
     if tec_col and tecnicos_ori:
         df[tec_col] = df[tec_col].astype(str).str.strip().str.upper()
