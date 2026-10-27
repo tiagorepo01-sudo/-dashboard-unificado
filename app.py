@@ -638,7 +638,7 @@ def load_seg():
         df[COL_DERIV] = pd.to_numeric(df[COL_DERIV], errors="coerce")
     return df
 
-def render_seg(df):
+def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
     total        = len(df)
     completadas  = (df[COL_COMP] == "Si").sum() if COL_COMP in df.columns else 0
     no_comp      = (df[COL_COMP] == "No").sum() if COL_COMP in df.columns else 0
@@ -648,10 +648,10 @@ def render_seg(df):
     kpi_color    = rank_color(pct_comp)
 
     st.markdown(f"""
-    <div class="dash-header" style="border-bottom:3px solid {SEG_ACCENT}">
-      <div class="logo-box" style="background:{SEG_ACCENT}">HAINTECH</div>
+    <div class="dash-header" style="border-bottom:3px solid {accent}">
+      <div class="logo-box" style="background:{accent}">HAINTECH</div>
       <div>
-        <div class="header-title">SEGUIMIENTO DE DERIVACIONES</div>
+        <div class="header-title">SEGUIMIENTO {nombre.upper()}</div>
         <div class="header-sub">PANEL DE CONTROL · SEPT 2026 · {total} órdenes filtradas</div>
       </div>
     </div>""", unsafe_allow_html=True)
@@ -666,7 +666,7 @@ def render_seg(df):
       <div class="kpi-card" style="border-color:#7F77DD"><div class="kpi-value" style="color:#7F77DD">{cnt_haintech}</div><div class="kpi-label">Gestión HAINTECH</div><div class="kpi-dot" style="background:#7F77DD"></div></div>
     </div>""", unsafe_allow_html=True)
 
-    p_style = f'style="border-color:{SEG_ACCENT}"'
+    p_style = f'style="border-color:{accent}"'
     col1, col2, col3 = st.columns([1.0, 1.5, 1.2])
 
     with col1:
@@ -788,7 +788,7 @@ def render_seg(df):
             st.caption("🟢 1 derivación   🟡 2–3   🔴 4+")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    render_agente_dist(df, "Soporte HAINTECH", SEG_ACCENT, "seg")
+    render_agente_dist(df, "Soporte HAINTECH", accent, key_prefix)
 
     # Tabla detalle Seguimiento
     st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
@@ -804,7 +804,7 @@ def render_seg(df):
     df_show = df_show.fillna("—")
     df_show.columns = [c.replace(COL_COMP,"Completada").replace(COL_GESTION,"Gestión").replace(COL_DERIV,"# Deriv.") for c in df_show.columns]
     st.dataframe(df_show, width="stretch", height=300, hide_index=True)
-    st.download_button("⬇ Exportar CSV filtrado", df[cols_show].assign(Fecha=df["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"), "seguimiento_filtrado.csv", "text/csv", key="dl_seg_det")
+    st.download_button("⬇ Exportar CSV filtrado", df[cols_show].assign(Fecha=df["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"), f"seguimiento_{key_prefix}_filtrado.csv", "text/csv", key=f"dl_{key_prefix}_det")
     st.markdown('</div>', unsafe_allow_html=True)
 
     # ── Panel lista: match Estado Inicial → Estado Final ─────────────────────────
@@ -838,13 +838,63 @@ def render_seg(df):
             st.markdown(f'<div style="max-height:320px;overflow-y:auto">{rows_html}</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown(f'<div class="dash-footer" style="border-color:{SEG_ACCENT}"><span>Fuente: Google Sheets · Seguimiento Derivaciones · Actualización automática cada 5 min</span><span>HAINTECH · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="dash-footer" style="border-color:{accent}"><span>Fuente: Google Sheets · Seguimiento {nombre} · Actualización automática cada 5 min</span><span>HAINTECH · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MÓDULO 4 · SEGUIMIENTO ORIENTE
+# ══════════════════════════════════════════════════════════════════════════════
+SEG_ORI_ACCENT = "#7F77DD"
+
+@st.cache_data(ttl=300, show_spinner="Cargando datos Seguimiento Oriente…")
+def load_seg_oriente():
+    # ── 1. Leer técnicos Oriente desde hoja parámetros (I19:J29) ──────────────
+    params_url = f"https://docs.google.com/spreadsheets/d/{HAINTECH_SHEET}/export?format=csv&gid=1134815886"
+    df_params = pd.read_csv(params_url, encoding="utf-8", on_bad_lines="skip", header=None)
+    # col I = índice 8, col J = índice 9 · filas 19–29 del sheet = iloc[18:29]
+    tecnicos_ori = (
+        pd.concat([df_params.iloc[18:29, 8], df_params.iloc[18:29, 9]])
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+    tecnicos_ori = tecnicos_ori[tecnicos_ori.str.len() > 0].unique().tolist()
+
+    # ── 2. Cargar data principal ───────────────────────────────────────────────
+    url = f"https://docs.google.com/spreadsheets/d/{HAINTECH_SHEET}/export?format=csv&gid=758087206"
+    df = pd.read_csv(url, encoding="utf-8", on_bad_lines="skip")
+    df.columns = df.columns.str.strip()
+    if "SF" in df.columns:
+        df.rename(columns={"SF": "Fecha"}, inplace=True)
+    elif "Fecha inicial" in df.columns:
+        df.rename(columns={"Fecha inicial": "Fecha"}, inplace=True)
+    df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True, errors="coerce")
+    df = df.dropna(subset=["Fecha"])
+    df["Semana"] = df["Fecha"].dt.isocalendar().week.astype(int)
+    if "Comuna" not in df.columns and len(df.columns) >= 3:
+        df.rename(columns={df.columns[2]: "Comuna"}, inplace=True)
+    if "Comuna" in df.columns:
+        df["Comuna"] = df["Comuna"].astype(str).str.strip()
+    for col in [COL_COMP, COL_GESTION, "Estado Solicitud Inicial", "Estado Solicitud Final", "Soporte HAINTECH"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+    if COL_DERIV in df.columns:
+        df[COL_DERIV] = pd.to_numeric(df[COL_DERIV], errors="coerce")
+
+    # ── 3. Filtrar por técnicos de Oriente ────────────────────────────────────
+    tec_col = next((c for c in ["Tecnico Auditado", "Técnico Auditado", "tecnico auditado"] if c in df.columns), None)
+    if tec_col and tecnicos_ori:
+        df[tec_col] = df[tec_col].astype(str).str.strip().str.upper()
+        df = df[df[tec_col].isin(tecnicos_ori)]
+
+    return df
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR · SELECTOR DE MÓDULO + FILTROS
 # ══════════════════════════════════════════════════════════════════════════════
-MODULOS = ["📊 Gestión NPS · Claro", "📡 QA Migración", "📋 Seguimiento Derivaciones"]
+MODULOS = ["📊 Gestión NPS · Claro", "📡 QA Migración", "📋 Seguimiento Derivaciones", "🗺️ Seguimiento Oriente"]
 
 with st.sidebar:
     st.markdown('<div class="sidebar-section" style="color:#1D6FE8">Módulo</div>', unsafe_allow_html=True)
@@ -897,8 +947,8 @@ with st.sidebar:
         if soporte_sel != "Todos" and "Soporte HAINTECH" in df.columns: df = df[df["Soporte HAINTECH"] == soporte_sel]
         if estados_sel and "Estado Solicitud Inicial" in df.columns: df = df[df["Estado Solicitud Inicial"].isin(estados_sel)]
 
-    # ── Seguimiento filters ──
-    else:
+    # ── Seguimiento Derivaciones filters ──
+    elif modulo == MODULOS[2]:
         df_raw = load_seg()
         min_d, max_d = df_raw["Fecha"].min().date(), df_raw["Fecha"].max().date()
         date_range = st.date_input("Período", value=(min_d, max_d), min_value=min_d, max_value=max_d)
@@ -927,6 +977,36 @@ with st.sidebar:
         if gestion_sel != "Todas" and COL_GESTION in df.columns: df = df[df[COL_GESTION] == gestion_sel]
         if comunas_sel and "Comuna" in df.columns: df = df[df["Comuna"].isin(comunas_sel)]
 
+    # ── Seguimiento Oriente filters ──
+    else:
+        df_raw = load_seg_oriente()
+        min_d, max_d = df_raw["Fecha"].min().date(), df_raw["Fecha"].max().date()
+        date_range = st.date_input("Período", value=(min_d, max_d), min_value=min_d, max_value=max_d, key="ori_date")
+        MESES_ES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",7:"Julio",8:"Agosto",9:"Septiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
+        meses_num = sorted(df_raw["Fecha"].dt.month.dropna().unique().tolist())
+        meses_disp = [MESES_ES[m] for m in meses_num]
+        meses_sel = st.multiselect("Mes", meses_disp, default=meses_disp, key="ori_mes")
+        meses_num_sel = [k for k,v in MESES_ES.items() if v in meses_sel]
+        semanas_disp = sorted(df_raw["Semana"].dropna().unique().tolist())
+        semanas_sel = st.multiselect("Semanas", semanas_disp, default=semanas_disp, key="ori_sem")
+        soportes = ["Todos"] + sorted(df_raw["Soporte HAINTECH"].dropna().unique().tolist()) if "Soporte HAINTECH" in df_raw.columns else ["Todos"]
+        soporte_sel = st.selectbox("Soporte HAINTECH", soportes, key="ori_sop")
+        estados_disp = df_raw["Estado Solicitud Inicial"].dropna().unique().tolist() if "Estado Solicitud Inicial" in df_raw.columns else []
+        estados_sel = st.multiselect("Estado Inicial", estados_disp, default=estados_disp, key="ori_est")
+        gestion_opts = ["Todas"] + sorted(df_raw[COL_GESTION].dropna().unique().tolist() if COL_GESTION in df_raw.columns else [])
+        gestion_sel = st.selectbox("Gestión", gestion_opts, key="ori_gest")
+        comunas_disp = sorted(df_raw["Comuna"].dropna().unique().tolist()) if "Comuna" in df_raw.columns else []
+        comunas_sel = st.multiselect("Comuna", comunas_disp, default=comunas_disp, key="ori_com")
+        start = pd.Timestamp(date_range[0]) if len(date_range) >= 1 else df_raw["Fecha"].min()
+        end   = pd.Timestamp(date_range[1]) if len(date_range) == 2 else df_raw["Fecha"].max()
+        df = df_raw[(df_raw["Fecha"] >= start) & (df_raw["Fecha"] <= end)].copy()
+        if meses_num_sel: df = df[df["Fecha"].dt.month.isin(meses_num_sel)]
+        if semanas_sel: df = df[df["Semana"].isin(semanas_sel)]
+        if soporte_sel != "Todos" and "Soporte HAINTECH" in df.columns: df = df[df["Soporte HAINTECH"] == soporte_sel]
+        if estados_sel and "Estado Solicitud Inicial" in df.columns: df = df[df["Estado Solicitud Inicial"].isin(estados_sel)]
+        if gestion_sel != "Todas" and COL_GESTION in df.columns: df = df[df[COL_GESTION] == gestion_sel]
+        if comunas_sel and "Comuna" in df.columns: df = df[df["Comuna"].isin(comunas_sel)]
+
     st.markdown("---")
     st.markdown('<p style="font-size:10px;color:#353545;text-align:center">Datos actualizados automáticamente<br>desde Google Sheets</p>', unsafe_allow_html=True)
     if st.button("🔄  Recargar datos", use_container_width=True):
@@ -939,5 +1019,7 @@ if modulo == MODULOS[0]:
     render_nps(df)
 elif modulo == MODULOS[1]:
     render_qa(df)
-else:
+elif modulo == MODULOS[2]:
     render_seg(df)
+else:
+    render_seg(df, nombre="ORIENTE", accent=SEG_ORI_ACCENT, key_prefix="segor")
