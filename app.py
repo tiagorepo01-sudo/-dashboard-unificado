@@ -883,7 +883,7 @@ def load_seg_oriente():
         df[COL_DERIV] = pd.to_numeric(df[COL_DERIV], errors="coerce")
 
     # ── 3. Solo datos desde hoy en adelante ───────────────────────────────────
-    df = df[df["Fecha"] >= pd.Timestamp.today().normalize()]
+    df = df[df["Fecha"] >= pd.Timestamp("2026-10-27")]
 
     # ── 4. Filtrar por técnicos de Oriente ────────────────────────────────────
     tec_col = next((c for c in ["Tecnico Auditado", "Técnico Auditado", "tecnico auditado"] if c in df.columns), None)
@@ -983,6 +983,9 @@ with st.sidebar:
     # ── Seguimiento Oriente filters ──
     else:
         df_raw = load_seg_oriente()
+        if df_raw.empty or df_raw["Fecha"].isna().all():
+            st.warning("No hay datos disponibles para Seguimiento Oriente.")
+            st.stop()
         min_d, max_d = df_raw["Fecha"].min().date(), df_raw["Fecha"].max().date()
         date_range = st.date_input("Período", value=(min_d, max_d), min_value=min_d, max_value=max_d, key="ori_date")
         MESES_ES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",7:"Julio",8:"Agosto",9:"Septiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
