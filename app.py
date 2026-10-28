@@ -667,7 +667,14 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
     </div>""", unsafe_allow_html=True)
 
     p_style = f'style="border-color:{accent}"'
-    col1, col2, col3 = st.columns([1.0, 1.5, 1.2])
+    COL_ESC_ECO = "M escalada eco"
+    has_escalada = COL_ESC_ECO in df.columns and not df[COL_ESC_ECO].replace("nan", pd.NA).dropna().empty
+
+    if has_escalada:
+        col1, col2, col2b, col3 = st.columns([1.0, 1.3, 1.1, 1.2])
+    else:
+        col1, col2, col3 = st.columns([1.0, 1.5, 1.2])
+        col2b = None
 
     with col1:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
@@ -710,6 +717,44 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR,family=FONT_FAMILY), margin=dict(l=0,r=0,t=0,b=0), height=310, legend=dict(bgcolor=CHART_BG,bordercolor=GRID_COLOR,font=dict(size=9),x=1.0,y=0.5))
                     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
+
+    if col2b is not None:
+        with col2b:
+            st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-title">M escalada eco</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-sub">Distribución de escaladas eco</div>', unsafe_allow_html=True)
+            ec_all = df[COL_ESC_ECO].replace("nan", pd.NA).dropna()
+            if not ec_all.empty:
+                tb_e, tp_e = st.tabs(["Barras", "Donut"])
+                ec = ec_all.value_counts().reset_index(); ec.columns = ["Valor", "Cantidad"]
+                ec["Pct"] = (ec["Cantidad"] / ec["Cantidad"].sum() * 100).round(1)
+                _esc_colors = {"Si": "#0F9B8E", "No": "#C83050", "si": "#0F9B8E", "no": "#C83050"}
+                ec["Color"] = ec["Valor"].map(_esc_colors).fillna(accent)
+                ec_bar = ec.sort_values("Cantidad", ascending=True)
+                with tb_e:
+                    fig = go.Figure(go.Bar(
+                        x=ec_bar["Cantidad"], y=ec_bar["Valor"], orientation="h",
+                        marker_color=ec_bar["Color"].tolist(),
+                        text=ec_bar.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
+                        textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+                    chart_layout(fig, height=310)
+                    fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                with tp_e:
+                    fig = go.Figure(go.Pie(
+                        labels=ec["Valor"], values=ec["Cantidad"], hole=0.55,
+                        marker_colors=ec["Color"].tolist(),
+                        textfont=dict(size=10), textinfo="percent"))
+                    fig.add_annotation(
+                        text=f"<b>{ec_all.count()}</b><br><span style='font-size:9px'>registros</span>",
+                        x=0.5, y=0.5, showarrow=False,
+                        font=dict(size=14, color="white", family="Barlow Condensed"))
+                    fig.update_layout(
+                        paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
+                        margin=dict(l=0, r=0, t=0, b=0), height=310,
+                        legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            st.markdown('</div>', unsafe_allow_html=True)
 
     with col3:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
