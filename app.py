@@ -667,8 +667,10 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
     </div>""", unsafe_allow_html=True)
 
     p_style = f'style="border-color:{accent}"'
-    COL_ESC_ECO = "M escalada eco"
-    has_escalada = COL_ESC_ECO in df.columns and not df[COL_ESC_ECO].replace("nan", pd.NA).dropna().empty
+    COL_ESC_ECO = next((c for c in df.columns if c.strip().lower() == "m escalada eco"), None)
+    has_escalada = COL_ESC_ECO is not None and not df[COL_ESC_ECO].replace("nan", pd.NA).dropna().empty
+    if nombre == "ORIENTE":
+        st.caption(f"🔍 DEBUG columnas: {list(df.columns)} | COL_ESC_ECO={COL_ESC_ECO} | has_escalada={has_escalada}")
 
     if has_escalada:
         col1, col2, col2b, col3 = st.columns([1.0, 1.3, 1.1, 1.2])
