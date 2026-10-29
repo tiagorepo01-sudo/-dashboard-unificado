@@ -678,20 +678,33 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
 
     with col1:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-title">Registro semanal</div>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-sub">Completadas vs No completadas por semana</div>', unsafe_allow_html=True)
-        if not df.empty and COL_COMP in df.columns:
-            pivot = df.groupby(["Semana", COL_COMP]).size().unstack(fill_value=0).reset_index().sort_values("Semana")
-            for c in ["Si","No"]:
-                if c not in pivot.columns: pivot[c] = 0
-            pivot["Total"] = pivot["Si"] + pivot["No"]
-            fig = go.Figure()
-            fig.add_trace(go.Bar(name="Completada", x=pivot["Semana"].astype(str), y=pivot["Si"], marker_color="#0F9B8E", text=pivot["Si"], textposition="inside", textfont=dict(size=10,color="white")))
-            fig.add_trace(go.Bar(name="No completada", x=pivot["Semana"].astype(str), y=pivot["No"], marker_color="#C83050", text=pivot["No"], textposition="inside", textfont=dict(size=10,color="white")))
-            fig.update_layout(barmode="stack"); chart_layout(fig, height=230); fig.update_xaxes(title_text="Semana ISO")
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-            tbl = pivot[["Semana","Si","No","Total"]].copy(); tbl.columns = ["Sem.","Complet.","No comp.","Total"]
-            st.dataframe(tbl.set_index("Sem."), width="stretch", height=110)
+        st.markdown('<div class="panel-title">Por qué no se puede efectuar</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Motivos de no efectuación de la orden</div>', unsafe_allow_html=True)
+        COL_MOTIVO = next((c for c in df.columns if "por que no se puede" in c.strip().lower() or "por qué no se puede" in c.strip().lower()), None)
+        if COL_MOTIVO and not df.empty:
+            mv_all = df[COL_MOTIVO].replace("nan", pd.NA).dropna()
+            if not mv_all.empty:
+                tb_m, tp_m = st.tabs(["Barras", "Donut"])
+                mv = mv_all.value_counts().reset_index(); mv.columns = ["Motivo", "Cantidad"]
+                mv["Pct"] = (mv["Cantidad"] / mv["Cantidad"].sum() * 100).round(1)
+                mv_bar = mv.sort_values("Cantidad", ascending=True)
+                with tb_m:
+                    fig = go.Figure(go.Bar(x=mv_bar["Cantidad"], y=mv_bar["Motivo"], orientation="h",
+                        marker_color=accent,
+                        text=mv_bar.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
+                        textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+                    chart_layout(fig, height=310)
+                    fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                with tp_m:
+                    fig = go.Figure(go.Pie(labels=mv["Motivo"], values=mv["Cantidad"], hole=0.55,
+                        textfont=dict(size=10), textinfo="percent"))
+                    fig.add_annotation(text=f"<b>{mv_all.count()}</b><br><span style='font-size:9px'>registros</span>",
+                        x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
+                    fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
+                        margin=dict(l=0, r=0, t=0, b=0), height=310,
+                        legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col2:
@@ -823,7 +836,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
-    col4, col5, col6 = st.columns([1.2, 0.9, 1.9])
+    col4, col_sem, col5, col6 = st.columns([1.2, 1.1, 0.9, 1.9])
 
     with col4:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
@@ -838,6 +851,24 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="meta 50%", annotation_font=dict(color="#353545",size=9), annotation_position="top")
             chart_layout(fig, height=270); fig.update_xaxes(range=[0,120], title_text="%"); fig.update_layout(margin=dict(l=8,r=110,t=14,b=8))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_sem:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Registro semanal</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Completadas vs No completadas por semana</div>', unsafe_allow_html=True)
+        if not df.empty and COL_COMP in df.columns:
+            pivot = df.groupby(["Semana", COL_COMP]).size().unstack(fill_value=0).reset_index().sort_values("Semana")
+            for c in ["Si","No"]:
+                if c not in pivot.columns: pivot[c] = 0
+            pivot["Total"] = pivot["Si"] + pivot["No"]
+            fig = go.Figure()
+            fig.add_trace(go.Bar(name="Completada", x=pivot["Semana"].astype(str), y=pivot["Si"], marker_color="#0F9B8E", text=pivot["Si"], textposition="inside", textfont=dict(size=10,color="white")))
+            fig.add_trace(go.Bar(name="No completada", x=pivot["Semana"].astype(str), y=pivot["No"], marker_color="#C83050", text=pivot["No"], textposition="inside", textfont=dict(size=10,color="white")))
+            fig.update_layout(barmode="stack"); chart_layout(fig, height=200); fig.update_xaxes(title_text="Semana ISO")
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            tbl = pivot[["Semana","Si","No","Total"]].copy(); tbl.columns = ["Sem.","Complet.","No comp.","Total"]
+            st.dataframe(tbl.set_index("Sem."), width="stretch", height=100)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col5:
