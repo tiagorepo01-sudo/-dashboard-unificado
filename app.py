@@ -758,6 +758,58 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
 
     with col3:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Orden Ducto Tapado Anteriormente</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Distribución de órdenes con ducto tapado previo</div>', unsafe_allow_html=True)
+        COL_DUCTO = next((c for c in df.columns if "ducto tapado" in c.strip().lower()), None)
+        if COL_DUCTO and not df.empty:
+            dt_all = df[COL_DUCTO].replace("nan", pd.NA).dropna()
+            if not dt_all.empty:
+                tb_d, tp_d = st.tabs(["Barras", "Donut"])
+                dt = dt_all.value_counts().reset_index(); dt.columns = ["Valor", "Cantidad"]
+                dt["Pct"] = (dt["Cantidad"] / dt["Cantidad"].sum() * 100).round(1)
+                _ducto_colors = {"Si": "#0F9B8E", "No": "#C83050", "si": "#0F9B8E", "no": "#C83050"}
+                dt["Color"] = dt["Valor"].map(_ducto_colors).fillna(accent)
+                dt_bar = dt.sort_values("Cantidad", ascending=True)
+                with tb_d:
+                    fig = go.Figure(go.Bar(x=dt_bar["Cantidad"], y=dt_bar["Valor"], orientation="h",
+                        marker_color=dt_bar["Color"].tolist(),
+                        text=dt_bar.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
+                        textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+                    chart_layout(fig, height=310)
+                    fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                with tp_d:
+                    fig = go.Figure(go.Pie(labels=dt["Valor"], values=dt["Cantidad"], hole=0.55,
+                        marker_colors=dt["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
+                    fig.add_annotation(text=f"<b>{dt_all.count()}</b><br><span style='font-size:9px'>registros</span>",
+                        x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
+                    fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
+                        margin=dict(l=0, r=0, t=0, b=0), height=310,
+                        legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    tec_col_seg = next((c for c in ["Tecnico Auditado","Técnico Auditado","tecnico auditado"] if c in df.columns), None)
+    _c_tec, _c_dia = st.columns([1.5, 1.0])
+    with _c_tec:
+        if not df.empty and COL_COMP in df.columns and tec_col_seg:
+            st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-title">Completitud por técnico</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-sub">% completitud por técnico auditado</div>', unsafe_allow_html=True)
+            df_tec = df.copy()
+            df_tec[tec_col_seg] = df_tec[tec_col_seg].astype(str).str.strip().str.upper()
+            tec = groupby_comp(df_tec, tec_col_seg, COL_COMP).sort_values("Pct_Comp", ascending=True)
+            n_tec = len(tec)
+            fig = go.Figure()
+            for _, row in tec.iterrows():
+                c = "#0F9B8E" if row["Pct_Comp"] >= 50 else "#C83050"
+                fig.add_trace(go.Bar(x=[row["Pct_Comp"]], y=[row[tec_col_seg]], orientation="h", marker_color=c, text=f"{row['Pct_Comp']}%  ({int(row['Completadas'])}/{int(row['Total'])})", textposition="outside", textfont=dict(size=9,color=TEXT_COLOR), showlegend=False))
+            fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="meta 50%", annotation_font=dict(color="#353545",size=9), annotation_position="top")
+            chart_layout(fig, height=max(200, n_tec * 20)); fig.update_xaxes(range=[0,125], title_text="%"); fig.update_layout(margin=dict(l=8,r=120,t=10,b=8))
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            st.markdown('</div>', unsafe_allow_html=True)
+    with _c_dia:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">% Completitud por día</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Tendencia diaria de órdenes completadas</div>', unsafe_allow_html=True)
         if not df.empty and COL_COMP in df.columns and "ID Orden" in df.columns:
@@ -769,24 +821,6 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             fig.add_hline(y=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="50%", annotation_font=dict(color="#353545",size=9))
             chart_layout(fig, height=310); fig.update_yaxes(title_text="%", range=[0,108])
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    tec_col_seg = next((c for c in ["Tecnico Auditado","Técnico Auditado","tecnico auditado"] if c in df.columns), None)
-    if not df.empty and COL_COMP in df.columns and tec_col_seg:
-        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-title">Completitud por técnico</div>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-sub">% completitud por técnico auditado</div>', unsafe_allow_html=True)
-        df_tec = df.copy()
-        df_tec[tec_col_seg] = df_tec[tec_col_seg].astype(str).str.strip().str.upper()
-        tec = groupby_comp(df_tec, tec_col_seg, COL_COMP).sort_values("Pct_Comp", ascending=True)
-        n_tec = len(tec)
-        fig = go.Figure()
-        for _, row in tec.iterrows():
-            c = "#0F9B8E" if row["Pct_Comp"] >= 50 else "#C83050"
-            fig.add_trace(go.Bar(x=[row["Pct_Comp"]], y=[row[tec_col_seg]], orientation="h", marker_color=c, text=f"{row['Pct_Comp']}%  ({int(row['Completadas'])}/{int(row['Total'])})", textposition="outside", textfont=dict(size=9,color=TEXT_COLOR), showlegend=False))
-        fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="meta 50%", annotation_font=dict(color="#353545",size=9), annotation_position="top")
-        chart_layout(fig, height=max(200, n_tec * 20)); fig.update_xaxes(range=[0,125], title_text="%"); fig.update_layout(margin=dict(l=8,r=120,t=10,b=8))
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
     col4, col5, col6 = st.columns([1.2, 0.9, 1.9])
