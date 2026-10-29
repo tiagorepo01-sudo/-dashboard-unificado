@@ -671,9 +671,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
     has_escalada = COL_ESC_ECO is not None and not df[COL_ESC_ECO].replace("nan", pd.NA).dropna().empty
 
     if has_escalada:
-        col1, col2, col2b, col3 = st.columns([1.0, 1.3, 1.1, 1.2])
+        col2, col3, col2b, col1 = st.columns([1.3, 1.2, 1.1, 1.0])
     else:
-        col1, col2, col3 = st.columns([1.0, 1.5, 1.2])
+        col2, col3, col1 = st.columns([1.5, 1.2, 1.0])
         col2b = None
 
     with col1:
