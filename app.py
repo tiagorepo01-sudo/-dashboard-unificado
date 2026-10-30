@@ -746,16 +746,6 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
     # df_xf = full cross-filter applied → used for KPIs, reactive charts, table
     df_xf = seg_apply_xf(df, kp, _col_map)
 
-    # ── TEMPORARY DIAGNOSTIC ─ remove after root cause confirmed ─────────────
-    _dbg_xf   = dict(seg_get_xf(kp))
-    _dbg_cols = {k: (v if v else "❌ None") for k, v in _col_map.items()}
-    st.info(
-        f"🔍 **[DBG {nombre}]** "
-        f"xf\_state=`{_dbg_xf}` | "
-        f"df\_xf={len(df_xf)} / df\_total={len(df)} | "
-        f"cols={_dbg_cols}"
-    )
-    # ─────────────────────────────────────────────────────────────────────────
 
     # ── KPI metrics (from cross-filtered data) ────────────────────────────────
     total        = len(df_xf)
@@ -864,9 +854,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                         textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
                     chart_layout(fig, height=310)
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
-                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                         on_select="rerun", key=f"{kp}_mot_bar")
-                    if _seg_proc_event(ev, kp, "mot", "y"): _need_rerun = True
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                    on_select="rerun", key=f"{kp}_mot_bar")
+                    if _seg_proc_event(st.session_state.get(f"{kp}_mot_bar"), kp, "mot", "y"): _need_rerun = True
                 with tp_m:
                     fig = go.Figure(go.Pie(labels=mv["Motivo"], values=mv["Cantidad"], hole=0.55,
                         textfont=dict(size=10), textinfo="percent"))
@@ -875,9 +865,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
                         margin=dict(l=0, r=0, t=0, b=0), height=310,
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
-                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                         on_select="rerun", key=f"{kp}_mot_pie")
-                    if _seg_proc_event(ev, kp, "mot", "label"): _need_rerun = True
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                    on_select="rerun", key=f"{kp}_mot_pie")
+                    if _seg_proc_event(st.session_state.get(f"{kp}_mot_pie"), kp, "mot", "label"): _need_rerun = True
             else:
                 st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
         else:
@@ -910,32 +900,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                         textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
                     chart_layout(fig, height=310)
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
-                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                         on_select="rerun", key=f"{kp}_ef_bar")
-                    # ── TEMP DEEP DEBUG ──────────────────────────────────────
-                    _dbg_ev_type = type(ev).__name__
-                    _dbg_pts_raw = []
-                    try:
-                        _dbg_pts_raw = list(ev.selection.points)
-                    except Exception:
-                        try:
-                            _dbg_pts_raw = list((ev or {}).get("selection", {}).get("points", []))
-                        except Exception:
-                            pass
-                    _dbg_ss = st.session_state.get(f"{kp}_ef_bar", "NOT_IN_SS")
-                    _dbg_pt0 = {}
-                    if _dbg_pts_raw:
-                        p0 = _dbg_pts_raw[0]
-                        _dbg_pt0 = dict(p0) if isinstance(p0, dict) else {a: getattr(p0, a, "?") for a in ("x","y","label","curve_number","point_number")}
-                    st.info(
-                        f"🔬 **[EF BAR DBG {nombre}]** "
-                        f"ev\_type=`{_dbg_ev_type}` | "
-                        f"pts\_count=`{len(_dbg_pts_raw)}` | "
-                        f"pt0=`{_dbg_pt0}` | "
-                        f"ss\_type=`{type(_dbg_ss).__name__}`"
-                    )
-                    # ─────────────────────────────────────────────────────────
-                    if _seg_proc_event(ev, kp, "ef", "y"): _need_rerun = True
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                    on_select="rerun", key=f"{kp}_ef_bar")
+                    if _seg_proc_event(st.session_state.get(f"{kp}_ef_bar"), kp, "ef", "y"): _need_rerun = True
                 with tp_f:
                     fig = go.Figure(go.Pie(labels=fc["Estado"], values=fc["Cantidad"], hole=0.55,
                         marker_colors=fc["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
@@ -944,9 +911,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
                         margin=dict(l=0, r=0, t=0, b=0), height=310,
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
-                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                         on_select="rerun", key=f"{kp}_ef_pie")
-                    if _seg_proc_event(ev, kp, "ef", "label"): _need_rerun = True
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                    on_select="rerun", key=f"{kp}_ef_pie")
+                    if _seg_proc_event(st.session_state.get(f"{kp}_ef_pie"), kp, "ef", "label"): _need_rerun = True
             else:
                 st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
         else:
@@ -981,9 +948,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                         textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
                     chart_layout(fig, height=310)
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
-                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                         on_select="rerun", key=f"{kp}_esc_bar")
-                    if _seg_proc_event(ev, kp, "esc", "y"): _need_rerun = True
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                    on_select="rerun", key=f"{kp}_esc_bar")
+                    if _seg_proc_event(st.session_state.get(f"{kp}_esc_bar"), kp, "esc", "y"): _need_rerun = True
                 with tp_e:
                     fig = go.Figure(go.Pie(
                         labels=ec["Valor"], values=ec["Cantidad"], hole=0.55,
@@ -997,9 +964,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                         paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
                         margin=dict(l=0, r=0, t=0, b=0), height=310,
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
-                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                         on_select="rerun", key=f"{kp}_esc_pie")
-                    if _seg_proc_event(ev, kp, "esc", "label"): _need_rerun = True
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                    on_select="rerun", key=f"{kp}_esc_pie")
+                    if _seg_proc_event(st.session_state.get(f"{kp}_esc_pie"), kp, "esc", "label"): _need_rerun = True
             else:
                 st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -1031,9 +998,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                         textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
                     chart_layout(fig, height=310)
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
-                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                         on_select="rerun", key=f"{kp}_duc_bar")
-                    if _seg_proc_event(ev, kp, "duc", "y"): _need_rerun = True
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                    on_select="rerun", key=f"{kp}_duc_bar")
+                    if _seg_proc_event(st.session_state.get(f"{kp}_duc_bar"), kp, "duc", "y"): _need_rerun = True
                 with tp_d:
                     fig = go.Figure(go.Pie(labels=dt["Valor"], values=dt["Cantidad"], hole=0.55,
                         marker_colors=dt["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
@@ -1042,9 +1009,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
                         margin=dict(l=0, r=0, t=0, b=0), height=310,
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
-                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                         on_select="rerun", key=f"{kp}_duc_pie")
-                    if _seg_proc_event(ev, kp, "duc", "label"): _need_rerun = True
+                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                    on_select="rerun", key=f"{kp}_duc_pie")
+                    if _seg_proc_event(st.session_state.get(f"{kp}_duc_pie"), kp, "duc", "label"): _need_rerun = True
             else:
                 st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
         else:
@@ -1084,9 +1051,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             chart_layout(fig, height=max(200, n_tec * 20))
             fig.update_xaxes(range=[0, 125], title_text="%")
             fig.update_layout(margin=dict(l=8, r=120, t=10, b=8))
-            ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                  on_select="rerun", key=f"{kp}_tec_bar")
-            if _seg_proc_event(ev, kp, "tec", "y"): _need_rerun = True
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                             on_select="rerun", key=f"{kp}_tec_bar")
+            if _seg_proc_event(st.session_state.get(f"{kp}_tec_bar"), kp, "tec", "y"): _need_rerun = True
             st.markdown('</div>', unsafe_allow_html=True)
     with _c_dia:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
@@ -1134,9 +1101,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             chart_layout(fig, height=270)
             fig.update_xaxes(range=[0, 120], title_text="%")
             fig.update_layout(margin=dict(l=8, r=110, t=14, b=8))
-            ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                  on_select="rerun", key=f"{kp}_sop_bar")
-            if _seg_proc_event(ev, kp, "sop", "y"): _need_rerun = True
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                             on_select="rerun", key=f"{kp}_sop_bar")
+            if _seg_proc_event(st.session_state.get(f"{kp}_sop_bar"), kp, "sop", "y"): _need_rerun = True
         else:
             st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
@@ -1188,9 +1155,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                 margin=dict(l=0, r=0, t=0, b=30), height=270,
                 legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=10),
                     orientation="h", yanchor="bottom", y=-0.18, xanchor="center", x=0.5))
-            ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                  on_select="rerun", key=f"{kp}_ges_pie")
-            if _seg_proc_event(ev, kp, "ges", "label"): _need_rerun = True
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                             on_select="rerun", key=f"{kp}_ges_pie")
+            if _seg_proc_event(st.session_state.get(f"{kp}_ges_pie"), kp, "ges", "label"): _need_rerun = True
         else:
             st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
