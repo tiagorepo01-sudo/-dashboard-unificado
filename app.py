@@ -662,12 +662,18 @@ def seg_apply_xf(df, kp, col_map, exclude_dim=None):
             continue
         vals = xf.get(dim, [])
         if vals and col in result.columns:
-            result = result[result[col].isin(vals)]
+            # Normalize both sides to handle trailing/leading spaces in source data.
+            # _seg_proc_event already strips values; this ensures column side matches.
+            stripped_vals = [str(v).strip() for v in vals]
+            result = result[result[col].astype(str).str.strip().isin(stripped_vals)]
     return result
 
 def seg_clear_xf(kp, dim=None):
     if dim is None:
-        keys_to_del = [k for k in list(st.session_state.keys()) if k.startswith(f"xf_{kp}")]
+        # Use exact match OR underscore-prefixed suffix to avoid matching
+        # "xf_seg" when clearing "xf_seg" also erasing "xf_segor*" keys.
+        keys_to_del = [k for k in list(st.session_state.keys())
+                       if k == f"xf_{kp}" or k.startswith(f"xf_{kp}_")]
         for k in keys_to_del:
             del st.session_state[k]
     else:
@@ -1012,7 +1018,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             st.markdown('<div class="panel-title">Completitud por técnico</div>', unsafe_allow_html=True)
             st.markdown('<div class="panel-sub">% completitud por técnico auditado</div>', unsafe_allow_html=True)
             df_tec2 = df_tec.copy()
-            df_tec2[tec_col_seg] = df_tec2[tec_col_seg].astype(str).str.strip().str.upper()
+            df_tec2[tec_col_seg] = df_tec2[tec_col_seg].astype(str).str.strip()
             tec = groupby_comp(df_tec2, tec_col_seg, COL_COMP).sort_values("Pct_Comp", ascending=True)
             n_tec = len(tec)
             sel_tec = seg_get_xf(kp).get("tec", [])
