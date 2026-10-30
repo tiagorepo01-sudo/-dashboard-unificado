@@ -19,6 +19,7 @@ html, body, [class*="css"] { font-family: 'Work Sans', sans-serif; }
 .stApp { background-color: #07070F; }
 section[data-testid="stSidebar"] { background-color: #0C0C18; border-right: 1px solid #1C1C2C; }
 #MainMenu, footer, header { visibility: hidden; }
+button[data-testid="stSidebarCollapseButton"] { visibility: visible !important; }
 .block-container { padding: 0 1rem 1rem 1rem !important; }
 .dash-header {
     background: #0A0A16; padding: 14px 20px;
