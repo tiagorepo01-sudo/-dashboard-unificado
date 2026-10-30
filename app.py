@@ -638,13 +638,115 @@ def load_seg():
         df[COL_DERIV] = pd.to_numeric(df[COL_DERIV], errors="coerce")
     return df
 
+# ── CROSS-FILTER UTILITIES (Seguimiento modules) ─────────────────────────────
+
+def _hex_rgba(hex_color, alpha=1.0):
+    h = hex_color.lstrip("#")
+    if len(h) == 6:
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"rgba({r},{g},{b},{alpha})"
+    return hex_color
+
+def seg_init_xf(kp):
+    if f"xf_{kp}" not in st.session_state:
+        st.session_state[f"xf_{kp}"] = {}
+
+def seg_get_xf(kp):
+    return st.session_state.get(f"xf_{kp}", {})
+
+def seg_apply_xf(df, kp, col_map, exclude_dim=None):
+    xf = seg_get_xf(kp)
+    result = df
+    for dim, col in col_map.items():
+        if dim == exclude_dim or not col:
+            continue
+        vals = xf.get(dim, [])
+        if vals and col in result.columns:
+            result = result[result[col].isin(vals)]
+    return result
+
+def seg_clear_xf(kp, dim=None):
+    if dim is None:
+        keys_to_del = [k for k in list(st.session_state.keys()) if k.startswith(f"xf_{kp}")]
+        for k in keys_to_del:
+            del st.session_state[k]
+    else:
+        xf = dict(st.session_state.get(f"xf_{kp}", {}))
+        xf.pop(dim, None)
+        st.session_state[f"xf_{kp}"] = xf
+        ev_key = f"xf_{kp}_ev_{dim}"
+        if ev_key in st.session_state:
+            del st.session_state[ev_key]
+
+def _seg_proc_event(event, kp, dim, val_key="y"):
+    """Process a plotly on_select event; return True if cross-filter state changed."""
+    if event is None:
+        return False
+    try:
+        pts = event.selection.points
+    except AttributeError:
+        try:
+            pts = event.get("selection", {}).get("points", [])
+        except Exception:
+            return False
+    pts = pts or []
+    new_sel = []
+    for p in pts:
+        v = p.get(val_key) if isinstance(p, dict) else getattr(p, val_key, None)
+        if v is None and val_key != "label":
+            v = p.get("label") if isinstance(p, dict) else getattr(p, "label", None)
+        if v is not None and str(v).strip():
+            new_sel.append(str(v).strip())
+    new_sel = sorted(set(new_sel))
+    ev_key = f"xf_{kp}_ev_{dim}"
+    if new_sel == st.session_state.get(ev_key, []):
+        return False
+    st.session_state[ev_key] = new_sel
+    xf = dict(st.session_state.get(f"xf_{kp}", {}))
+    if new_sel:
+        xf[dim] = new_sel
+    else:
+        xf.pop(dim, None)
+    st.session_state[f"xf_{kp}"] = xf
+    return True
+
+
 def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
-    total        = len(df)
-    completadas  = (df[COL_COMP] == "Si").sum() if COL_COMP in df.columns else 0
-    no_comp      = (df[COL_COMP] == "No").sum() if COL_COMP in df.columns else 0
+    kp = key_prefix
+
+    # ── Detect dynamic columns at top level ──────────────────────────────────
+    COL_ESC_ECO  = next((c for c in df.columns if c.strip().lower() in ("m escalada eco", "escalada a eco")), None)
+    COL_MOTIVO   = next((c for c in df.columns if "por que no se puede" in c.strip().lower() or "por qué no se puede" in c.strip().lower()), None)
+    COL_DUCTO    = next((c for c in df.columns if "ducto tapado" in c.strip().lower()), None)
+    tec_col_seg  = next((c for c in ["Tecnico Auditado", "Técnico Auditado", "tecnico auditado"] if c in df.columns), None)
+    has_escalada = COL_ESC_ECO is not None and not df[COL_ESC_ECO].replace("nan", pd.NA).dropna().empty
+
+    # ── Cross-filter setup ────────────────────────────────────────────────────
+    seg_init_xf(kp)
+    _col_map = {
+        "ef":  "Estado Solicitud Final",
+        "mot": COL_MOTIVO,
+        "duc": COL_DUCTO,
+        "esc": COL_ESC_ECO,
+        "ges": COL_GESTION,
+        "sop": "Soporte HAINTECH",
+        "tec": tec_col_seg,
+    }
+    _dim_labels = {
+        "ef": "Estado final", "mot": "Motivo no efectuación", "duc": "Ducto tapado",
+        "esc": "Escalada ECO", "ges": "Gestión", "sop": "Soporte", "tec": "Técnico",
+    }
+
+    # df_xf = full cross-filter applied → used for KPIs, reactive charts, table
+    df_xf = seg_apply_xf(df, kp, _col_map)
+
+    # ── KPI metrics (from cross-filtered data) ────────────────────────────────
+    total        = len(df_xf)
+    completadas  = (df_xf[COL_COMP] == "Si").sum() if COL_COMP in df_xf.columns else 0
+    no_comp      = (df_xf[COL_COMP] == "No").sum() if COL_COMP in df_xf.columns else 0
     pct_comp     = round(completadas / total * 100, 1) if total else 0
-    prom_deriv   = round(df[COL_DERIV].mean(), 1) if COL_DERIV in df.columns and not df[COL_DERIV].isna().all() else 0
-    cnt_haintech = (df[COL_GESTION] == "HAINTECH").sum() if COL_GESTION in df.columns else 0
+    prom_deriv   = round(df_xf[COL_DERIV].mean(), 1) if COL_DERIV in df_xf.columns and not df_xf[COL_DERIV].isna().all() else 0
+    cnt_haintech = (df_xf[COL_GESTION] == "HAINTECH").sum() if COL_GESTION in df_xf.columns else 0
     kpi_color    = rank_color(pct_comp)
 
     st.markdown(f"""
@@ -666,9 +768,51 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
       <div class="kpi-card" style="border-color:#7F77DD"><div class="kpi-value" style="color:#7F77DD">{cnt_haintech}</div><div class="kpi-label">Gestión HAINTECH</div><div class="kpi-dot" style="background:#7F77DD"></div></div>
     </div>""", unsafe_allow_html=True)
 
+    # ── Active cross-filters bar ──────────────────────────────────────────────
+    xf_state = seg_get_xf(kp)
+    act_xf   = [(d, v) for d, v in xf_state.items() if v]
+    if act_xf:
+        pills = "".join(
+            f'<span style="background:#111827;color:#93C5FD;font-size:10px;padding:2px 10px;'
+            f'border-radius:10px;border:1px solid #1E3A5F;margin-right:4px">'
+            f'<b style="color:#60A5FA">{_dim_labels.get(d,"?")}:</b> {" · ".join(str(x) for x in v)}'
+            f'</span>'
+            for d, v in act_xf
+        )
+        st.markdown(
+            f'<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;'
+            f'margin-bottom:8px;padding:8px 14px;background:#070B14;'
+            f'border:1px solid #1A2A3A;border-left:3px solid {accent};border-radius:4px">'
+            f'<span style="font-size:9px;color:#334155;text-transform:uppercase;'
+            f'letter-spacing:.1em;margin-right:6px">FILTROS ACTIVOS</span>'
+            f'{pills}'
+            f'<span style="font-size:10px;color:#334155;margin-left:auto">'
+            f'{total} de {len(df)} registros</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        _bc = st.columns([2, 8])
+        with _bc[0]:
+            if st.button("🗑 Limpiar filtros", key=f"clr_{kp}", use_container_width=True):
+                seg_clear_xf(kp)
+                st.rerun()
+
     p_style = f'style="border-color:{accent}"'
-    COL_ESC_ECO = next((c for c in df.columns if c.strip().lower() in ("m escalada eco", "escalada a eco")), None)
-    has_escalada = COL_ESC_ECO is not None and not df[COL_ESC_ECO].replace("nan", pd.NA).dropna().empty
+
+    # ── Empty state guard ─────────────────────────────────────────────────────
+    if df_xf.empty and act_xf:
+        st.markdown(
+            f'<div style="text-align:center;padding:48px 20px;color:#334155;background:#07070F;'
+            f'border:1px dashed #1C2C3A;border-radius:6px;margin:20px 0">'
+            f'<div style="font-size:36px;margin-bottom:10px">◌</div>'
+            f'<div style="font-family:Barlow Condensed;font-size:18px;letter-spacing:.12em">SIN RESULTADOS</div>'
+            f'<div style="font-size:11px;color:#4A5A75;margin-top:6px">'
+            f'La combinación de filtros activos no retorna registros.</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(f'<div class="dash-footer" style="border-color:{accent}"><span>Fuente: Google Sheets · Seguimiento {nombre} · Actualización automática cada 5 min</span><span>HAINTECH · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
+        return
 
     if has_escalada:
         col2, col3, col2b, col1 = st.columns([1.3, 1.2, 1.1, 1.0])
@@ -676,26 +820,35 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
         col2, col3, col1 = st.columns([1.5, 1.2, 1.0])
         col2b = None
 
+    # ── PANEL: Por qué no se puede efectuar ──────────────────────────────────
     with col1:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Por qué no se puede efectuar</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Motivos de no efectuación de la orden</div>', unsafe_allow_html=True)
-        COL_MOTIVO = next((c for c in df.columns if "por que no se puede" in c.strip().lower() or "por qué no se puede" in c.strip().lower()), None)
-        if COL_MOTIVO and not df.empty:
-            mv_all = df[COL_MOTIVO].replace("nan", pd.NA).dropna()
+        df_mot = seg_apply_xf(df, kp, _col_map, exclude_dim="mot")
+        if COL_MOTIVO and not df_mot.empty:
+            mv_all = df_mot[COL_MOTIVO].replace("nan", pd.NA).dropna()
             if not mv_all.empty:
                 tb_m, tp_m = st.tabs(["Barras", "Donut"])
                 mv = mv_all.value_counts().reset_index(); mv.columns = ["Motivo", "Cantidad"]
                 mv["Pct"] = (mv["Cantidad"] / mv["Cantidad"].sum() * 100).round(1)
                 mv_bar = mv.sort_values("Cantidad", ascending=True)
+                sel_mot = seg_get_xf(kp).get("mot", [])
+                mot_colors = [
+                    accent if (not sel_mot or m in sel_mot) else _hex_rgba(accent, 0.22)
+                    for m in mv_bar["Motivo"]
+                ]
                 with tb_m:
                     fig = go.Figure(go.Bar(x=mv_bar["Cantidad"], y=mv_bar["Motivo"], orientation="h",
-                        marker_color=accent,
+                        marker_color=mot_colors,
                         text=mv_bar.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
                         textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
                     chart_layout(fig, height=310)
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                         on_select="rerun", key=f"{kp}_mot_bar")
+                    if _seg_proc_event(ev, kp, "mot", "y"):
+                        st.rerun()
                 with tp_m:
                     fig = go.Figure(go.Pie(labels=mv["Motivo"], values=mv["Cantidad"], hole=0.55,
                         textfont=dict(size=10), textinfo="percent"))
@@ -704,55 +857,88 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
                         margin=dict(l=0, r=0, t=0, b=0), height=310,
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                         on_select="rerun", key=f"{kp}_mot_pie")
+                    if _seg_proc_event(ev, kp, "mot", "label"):
+                        st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── PANEL: Estado solicitud final ─────────────────────────────────────────
     with col2:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Estado solicitud final</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Resultado final después de la gestión</div>', unsafe_allow_html=True)
-        if not df.empty and "Estado Solicitud Final" in df.columns:
-            fc_all = df["Estado Solicitud Final"].replace("nan", pd.NA).dropna()
+        df_ef = seg_apply_xf(df, kp, _col_map, exclude_dim="ef")
+        if not df_ef.empty and "Estado Solicitud Final" in df_ef.columns:
+            fc_all = df_ef["Estado Solicitud Final"].replace("nan", pd.NA).dropna()
             if not fc_all.empty:
-                tb_f, tp_f = st.tabs(["Barras","Donut"])
-                fc = fc_all.value_counts().reset_index(); fc.columns = ["Estado","Cantidad"]
-                fc["Pct"] = (fc["Cantidad"]/fc["Cantidad"].sum()*100).round(1)
+                tb_f, tp_f = st.tabs(["Barras", "Donut"])
+                fc = fc_all.value_counts().reset_index(); fc.columns = ["Estado", "Cantidad"]
+                fc["Pct"] = (fc["Cantidad"] / fc["Cantidad"].sum() * 100).round(1)
                 fc["Color"] = fc["Estado"].map(SEG_ESTADO_FIN_COLORS).fillna("#64748b")
                 fc = fc.sort_values("Cantidad", ascending=True)
+                sel_ef = seg_get_xf(kp).get("ef", [])
+                ef_colors = [
+                    c if (not sel_ef or e in sel_ef) else _hex_rgba(c, 0.22)
+                    for e, c in zip(fc["Estado"], fc["Color"])
+                ]
                 with tb_f:
-                    fig = go.Figure(go.Bar(x=fc["Cantidad"], y=fc["Estado"], orientation="h", marker_color=fc["Color"].tolist(),
-                        text=fc.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1), textposition="outside", textfont=dict(size=10,color=TEXT_COLOR)))
-                    chart_layout(fig, height=310); fig.update_layout(showlegend=False, margin=dict(l=8,r=90,t=14,b=8))
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                    fig = go.Figure(go.Bar(x=fc["Cantidad"], y=fc["Estado"], orientation="h",
+                        marker_color=ef_colors,
+                        text=fc.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
+                        textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+                    chart_layout(fig, height=310)
+                    fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
+                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                         on_select="rerun", key=f"{kp}_ef_bar")
+                    if _seg_proc_event(ev, kp, "ef", "y"):
+                        st.rerun()
                 with tp_f:
-                    fig = go.Figure(go.Pie(labels=fc["Estado"], values=fc["Cantidad"], hole=0.55, marker_colors=fc["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
-                    fig.add_annotation(text=f"<b>{fc_all.count()}</b><br><span style='font-size:9px'>órdenes</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14,color="white",family="Barlow Condensed"))
-                    fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR,family=FONT_FAMILY), margin=dict(l=0,r=0,t=0,b=0), height=310, legend=dict(bgcolor=CHART_BG,bordercolor=GRID_COLOR,font=dict(size=9),x=1.0,y=0.5))
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                    fig = go.Figure(go.Pie(labels=fc["Estado"], values=fc["Cantidad"], hole=0.55,
+                        marker_colors=fc["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
+                    fig.add_annotation(text=f"<b>{fc_all.count()}</b><br><span style='font-size:9px'>órdenes</span>",
+                        x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
+                    fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
+                        margin=dict(l=0, r=0, t=0, b=0), height=310,
+                        legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
+                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                         on_select="rerun", key=f"{kp}_ef_pie")
+                    if _seg_proc_event(ev, kp, "ef", "label"):
+                        st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── PANEL: M escalada eco ─────────────────────────────────────────────────
     if col2b is not None:
         with col2b:
             st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
             st.markdown('<div class="panel-title">M escalada eco</div>', unsafe_allow_html=True)
             st.markdown('<div class="panel-sub">Distribución de escaladas eco</div>', unsafe_allow_html=True)
-            ec_all = df[COL_ESC_ECO].replace("nan", pd.NA).dropna()
+            df_esc = seg_apply_xf(df, kp, _col_map, exclude_dim="esc")
+            ec_all = df_esc[COL_ESC_ECO].replace("nan", pd.NA).dropna() if not df_esc.empty else pd.Series(dtype=str)
             if not ec_all.empty:
                 tb_e, tp_e = st.tabs(["Barras", "Donut"])
                 ec = ec_all.value_counts().reset_index(); ec.columns = ["Valor", "Cantidad"]
                 ec["Pct"] = (ec["Cantidad"] / ec["Cantidad"].sum() * 100).round(1)
-                _esc_colors = {"Si": "#0F9B8E", "No": "#C83050", "si": "#0F9B8E", "no": "#C83050"}
-                ec["Color"] = ec["Valor"].map(_esc_colors).fillna(accent)
+                _esc_colors_map = {"Si": "#0F9B8E", "No": "#C83050", "si": "#0F9B8E", "no": "#C83050"}
+                ec["Color"] = ec["Valor"].map(_esc_colors_map).fillna(accent)
                 ec_bar = ec.sort_values("Cantidad", ascending=True)
+                sel_esc = seg_get_xf(kp).get("esc", [])
+                esc_colors = [
+                    c if (not sel_esc or v in sel_esc) else _hex_rgba(c, 0.22)
+                    for v, c in zip(ec_bar["Valor"], ec_bar["Color"])
+                ]
                 with tb_e:
                     fig = go.Figure(go.Bar(
                         x=ec_bar["Cantidad"], y=ec_bar["Valor"], orientation="h",
-                        marker_color=ec_bar["Color"].tolist(),
+                        marker_color=esc_colors,
                         text=ec_bar.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
                         textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
                     chart_layout(fig, height=310)
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                         on_select="rerun", key=f"{kp}_esc_bar")
+                    if _seg_proc_event(ev, kp, "esc", "y"):
+                        st.rerun()
                 with tp_e:
                     fig = go.Figure(go.Pie(
                         labels=ec["Valor"], values=ec["Cantidad"], hole=0.55,
@@ -766,31 +952,43 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                         paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
                         margin=dict(l=0, r=0, t=0, b=0), height=310,
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                         on_select="rerun", key=f"{kp}_esc_pie")
+                    if _seg_proc_event(ev, kp, "esc", "label"):
+                        st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── PANEL: Orden Ducto Tapado Anteriormente ───────────────────────────────
     with col3:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Orden Ducto Tapado Anteriormente</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Distribución de órdenes con ducto tapado previo</div>', unsafe_allow_html=True)
-        COL_DUCTO = next((c for c in df.columns if "ducto tapado" in c.strip().lower()), None)
-        if COL_DUCTO and not df.empty:
-            dt_all = df[COL_DUCTO].replace("nan", pd.NA).dropna()
+        df_duc = seg_apply_xf(df, kp, _col_map, exclude_dim="duc")
+        if COL_DUCTO and not df_duc.empty:
+            dt_all = df_duc[COL_DUCTO].replace("nan", pd.NA).dropna()
             if not dt_all.empty:
                 tb_d, tp_d = st.tabs(["Barras", "Donut"])
                 dt = dt_all.value_counts().reset_index(); dt.columns = ["Valor", "Cantidad"]
                 dt["Pct"] = (dt["Cantidad"] / dt["Cantidad"].sum() * 100).round(1)
-                _ducto_colors = {"Si": "#0F9B8E", "No": "#C83050", "si": "#0F9B8E", "no": "#C83050"}
-                dt["Color"] = dt["Valor"].map(_ducto_colors).fillna(accent)
+                _ducto_colors_map = {"Si": "#0F9B8E", "No": "#C83050", "si": "#0F9B8E", "no": "#C83050"}
+                dt["Color"] = dt["Valor"].map(_ducto_colors_map).fillna(accent)
                 dt_bar = dt.sort_values("Cantidad", ascending=True)
+                sel_duc = seg_get_xf(kp).get("duc", [])
+                duc_colors = [
+                    c if (not sel_duc or v in sel_duc) else _hex_rgba(c, 0.22)
+                    for v, c in zip(dt_bar["Valor"], dt_bar["Color"])
+                ]
                 with tb_d:
                     fig = go.Figure(go.Bar(x=dt_bar["Cantidad"], y=dt_bar["Valor"], orientation="h",
-                        marker_color=dt_bar["Color"].tolist(),
+                        marker_color=duc_colors,
                         text=dt_bar.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
                         textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
                     chart_layout(fig, height=310)
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                         on_select="rerun", key=f"{kp}_duc_bar")
+                    if _seg_proc_event(ev, kp, "duc", "y"):
+                        st.rerun()
                 with tp_d:
                     fig = go.Figure(go.Pie(labels=dt["Valor"], values=dt["Cantidad"], hole=0.55,
                         marker_colors=dt["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
@@ -799,130 +997,193 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
                         margin=dict(l=0, r=0, t=0, b=0), height=310,
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                    ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                         on_select="rerun", key=f"{kp}_duc_pie")
+                    if _seg_proc_event(ev, kp, "duc", "label"):
+                        st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-    tec_col_seg = next((c for c in ["Tecnico Auditado","Técnico Auditado","tecnico auditado"] if c in df.columns), None)
+    # ── PANEL: Completitud por técnico + % Completitud por día ───────────────
     _c_tec, _c_dia = st.columns([1.5, 1.0])
     with _c_tec:
-        if not df.empty and COL_COMP in df.columns and tec_col_seg:
+        df_tec = seg_apply_xf(df, kp, _col_map, exclude_dim="tec")
+        if not df_tec.empty and COL_COMP in df_tec.columns and tec_col_seg:
             st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
             st.markdown('<div class="panel-title">Completitud por técnico</div>', unsafe_allow_html=True)
             st.markdown('<div class="panel-sub">% completitud por técnico auditado</div>', unsafe_allow_html=True)
-            df_tec = df.copy()
-            df_tec[tec_col_seg] = df_tec[tec_col_seg].astype(str).str.strip().str.upper()
-            tec = groupby_comp(df_tec, tec_col_seg, COL_COMP).sort_values("Pct_Comp", ascending=True)
+            df_tec2 = df_tec.copy()
+            df_tec2[tec_col_seg] = df_tec2[tec_col_seg].astype(str).str.strip().str.upper()
+            tec = groupby_comp(df_tec2, tec_col_seg, COL_COMP).sort_values("Pct_Comp", ascending=True)
             n_tec = len(tec)
+            sel_tec = seg_get_xf(kp).get("tec", [])
             fig = go.Figure()
             for _, row in tec.iterrows():
-                c = "#0F9B8E" if row["Pct_Comp"] >= 50 else "#C83050"
-                fig.add_trace(go.Bar(x=[row["Pct_Comp"]], y=[row[tec_col_seg]], orientation="h", marker_color=c, text=f"{row['Pct_Comp']}%  ({int(row['Completadas'])}/{int(row['Total'])})", textposition="outside", textfont=dict(size=9,color=TEXT_COLOR), showlegend=False))
-            fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="meta 50%", annotation_font=dict(color="#353545",size=9), annotation_position="top")
-            chart_layout(fig, height=max(200, n_tec * 20)); fig.update_xaxes(range=[0,125], title_text="%"); fig.update_layout(margin=dict(l=8,r=120,t=10,b=8))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                c_base = "#0F9B8E" if row["Pct_Comp"] >= 50 else "#C83050"
+                c = c_base if (not sel_tec or row[tec_col_seg] in sel_tec) else _hex_rgba(c_base, 0.22)
+                fig.add_trace(go.Bar(x=[row["Pct_Comp"]], y=[row[tec_col_seg]], orientation="h",
+                    marker_color=c,
+                    text=f"{row['Pct_Comp']}%  ({int(row['Completadas'])}/{int(row['Total'])})",
+                    textposition="outside", textfont=dict(size=9, color=TEXT_COLOR), showlegend=False))
+            fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1,
+                annotation_text="meta 50%", annotation_font=dict(color="#353545", size=9), annotation_position="top")
+            chart_layout(fig, height=max(200, n_tec * 20))
+            fig.update_xaxes(range=[0, 125], title_text="%")
+            fig.update_layout(margin=dict(l=8, r=120, t=10, b=8))
+            ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                  on_select="rerun", key=f"{kp}_tec_bar")
+            if _seg_proc_event(ev, kp, "tec", "y"):
+                st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
     with _c_dia:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">% Completitud por día</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Tendencia diaria de órdenes completadas</div>', unsafe_allow_html=True)
-        if not df.empty and COL_COMP in df.columns and "ID Orden" in df.columns:
-            daily = df.groupby("Fecha").agg(Total=("ID Orden","count"), Comp=(COL_COMP, lambda x: (x=="Si").sum())).reset_index().sort_values("Fecha")
-            daily["Pct_C"] = (daily["Comp"]/daily["Total"]*100).round(1); daily["Pct_NC"] = (100-daily["Pct_C"]).round(1)
+        if not df_xf.empty and COL_COMP in df_xf.columns and "ID Orden" in df_xf.columns:
+            daily = df_xf.groupby("Fecha").agg(Total=("ID Orden", "count"), Comp=(COL_COMP, lambda x: (x == "Si").sum())).reset_index().sort_values("Fecha")
+            daily["Pct_C"] = (daily["Comp"] / daily["Total"] * 100).round(1)
+            daily["Pct_NC"] = (100 - daily["Pct_C"]).round(1)
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=daily["Fecha"], y=daily["Pct_C"], name="% Completada", mode="lines+markers", line=dict(color="#0F9B8E",width=2), marker=dict(size=5), fill="tozeroy", fillcolor="rgba(15,155,142,0.08)"))
-            fig.add_trace(go.Scatter(x=daily["Fecha"], y=daily["Pct_NC"], name="% No completada", mode="lines+markers", line=dict(color="#C83050",width=2,dash="dot"), marker=dict(size=4)))
-            fig.add_hline(y=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="50%", annotation_font=dict(color="#353545",size=9))
-            chart_layout(fig, height=310); fig.update_yaxes(title_text="%", range=[0,108])
+            fig.add_trace(go.Scatter(x=daily["Fecha"], y=daily["Pct_C"], name="% Completada", mode="lines+markers",
+                line=dict(color="#0F9B8E", width=2), marker=dict(size=5), fill="tozeroy", fillcolor="rgba(15,155,142,0.08)"))
+            fig.add_trace(go.Scatter(x=daily["Fecha"], y=daily["Pct_NC"], name="% No completada", mode="lines+markers",
+                line=dict(color="#C83050", width=2, dash="dot"), marker=dict(size=4)))
+            fig.add_hline(y=50, line_dash="dash", line_color="#353545", line_width=1,
+                annotation_text="50%", annotation_font=dict(color="#353545", size=9))
+            chart_layout(fig, height=310)
+            fig.update_yaxes(title_text="%", range=[0, 108])
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
     col4, col_sem, col5, col6 = st.columns([1.2, 1.1, 0.9, 1.9])
 
+    # ── PANEL: Completitud por soporte ────────────────────────────────────────
     with col4:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Completitud por soporte</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">% migración exitosa por agente</div>', unsafe_allow_html=True)
-        if not df.empty and COL_COMP in df.columns and "Soporte HAINTECH" in df.columns:
-            ag = groupby_comp(df, "Soporte HAINTECH", COL_COMP).sort_values("Pct_Comp", ascending=True)
+        df_sop = seg_apply_xf(df, kp, _col_map, exclude_dim="sop")
+        if not df_sop.empty and COL_COMP in df_sop.columns and "Soporte HAINTECH" in df_sop.columns:
+            ag = groupby_comp(df_sop, "Soporte HAINTECH", COL_COMP).sort_values("Pct_Comp", ascending=True)
+            sel_sop = seg_get_xf(kp).get("sop", [])
             fig = go.Figure()
             for _, row in ag.iterrows():
-                c = "#0F9B8E" if row["Pct_Comp"] >= 50 else "#C83050"
-                fig.add_trace(go.Bar(x=[row["Pct_Comp"]], y=[row["Soporte HAINTECH"]], orientation="h", marker_color=c, text=f"{row['Pct_Comp']}%  ({int(row['Completadas'])}/{int(row['Total'])})", textposition="outside", textfont=dict(size=10,color=TEXT_COLOR), showlegend=False))
-            fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="meta 50%", annotation_font=dict(color="#353545",size=9), annotation_position="top")
-            chart_layout(fig, height=270); fig.update_xaxes(range=[0,120], title_text="%"); fig.update_layout(margin=dict(l=8,r=110,t=14,b=8))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                c_base = "#0F9B8E" if row["Pct_Comp"] >= 50 else "#C83050"
+                c = c_base if (not sel_sop or row["Soporte HAINTECH"] in sel_sop) else _hex_rgba(c_base, 0.22)
+                fig.add_trace(go.Bar(x=[row["Pct_Comp"]], y=[row["Soporte HAINTECH"]], orientation="h",
+                    marker_color=c,
+                    text=f"{row['Pct_Comp']}%  ({int(row['Completadas'])}/{int(row['Total'])})",
+                    textposition="outside", textfont=dict(size=10, color=TEXT_COLOR), showlegend=False))
+            fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1,
+                annotation_text="meta 50%", annotation_font=dict(color="#353545", size=9), annotation_position="top")
+            chart_layout(fig, height=270)
+            fig.update_xaxes(range=[0, 120], title_text="%")
+            fig.update_layout(margin=dict(l=8, r=110, t=14, b=8))
+            ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                  on_select="rerun", key=f"{kp}_sop_bar")
+            if _seg_proc_event(ev, kp, "sop", "y"):
+                st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── PANEL: Registro semanal ───────────────────────────────────────────────
     with col_sem:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Registro semanal</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Completadas vs No completadas por semana</div>', unsafe_allow_html=True)
-        if not df.empty and COL_COMP in df.columns:
-            pivot = df.groupby(["Semana", COL_COMP]).size().unstack(fill_value=0).reset_index().sort_values("Semana")
-            for c in ["Si","No"]:
+        if not df_xf.empty and COL_COMP in df_xf.columns:
+            pivot = df_xf.groupby(["Semana", COL_COMP]).size().unstack(fill_value=0).reset_index().sort_values("Semana")
+            for c in ["Si", "No"]:
                 if c not in pivot.columns: pivot[c] = 0
             pivot["Total"] = pivot["Si"] + pivot["No"]
             fig = go.Figure()
-            fig.add_trace(go.Bar(name="Completada", x=pivot["Semana"].astype(str), y=pivot["Si"], marker_color="#0F9B8E", text=pivot["Si"], textposition="inside", textfont=dict(size=10,color="white")))
-            fig.add_trace(go.Bar(name="No completada", x=pivot["Semana"].astype(str), y=pivot["No"], marker_color="#C83050", text=pivot["No"], textposition="inside", textfont=dict(size=10,color="white")))
-            fig.update_layout(barmode="stack"); chart_layout(fig, height=200); fig.update_xaxes(title_text="Semana ISO")
+            fig.add_trace(go.Bar(name="Completada", x=pivot["Semana"].astype(str), y=pivot["Si"],
+                marker_color="#0F9B8E", text=pivot["Si"], textposition="inside", textfont=dict(size=10, color="white")))
+            fig.add_trace(go.Bar(name="No completada", x=pivot["Semana"].astype(str), y=pivot["No"],
+                marker_color="#C83050", text=pivot["No"], textposition="inside", textfont=dict(size=10, color="white")))
+            fig.update_layout(barmode="stack")
+            chart_layout(fig, height=200)
+            fig.update_xaxes(title_text="Semana ISO")
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-            tbl = pivot[["Semana","Si","No","Total"]].copy(); tbl.columns = ["Sem.","Complet.","No comp.","Total"]
+            tbl = pivot[["Semana", "Si", "No", "Total"]].copy(); tbl.columns = ["Sem.", "Complet.", "No comp.", "Total"]
             st.dataframe(tbl.set_index("Sem."), width="stretch", height=100)
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── PANEL: Tipo de gestión ────────────────────────────────────────────────
     with col5:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Tipo de gestión</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">INTERNO vs HAINTECH</div>', unsafe_allow_html=True)
-        if not df.empty and COL_GESTION in df.columns:
-            gc = df[COL_GESTION].value_counts().reset_index(); gc.columns = ["Gestión","Cantidad"]
-            fig = go.Figure(go.Pie(labels=gc["Gestión"], values=gc["Cantidad"], hole=0.55, marker_colors=[SEG_GESTION_COLORS.get(g,"#64748b") for g in gc["Gestión"]], textfont=dict(size=10), textinfo="percent+value"))
-            fig.add_annotation(text=f"<b>{total}</b><br><span style='font-size:9px'>órdenes</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14,color="white",family="Barlow Condensed"))
-            fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR,family=FONT_FAMILY), margin=dict(l=0,r=0,t=0,b=30), height=270, legend=dict(bgcolor=CHART_BG,bordercolor=GRID_COLOR,font=dict(size=10),orientation="h",yanchor="bottom",y=-0.18,xanchor="center",x=0.5))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        df_ges = seg_apply_xf(df, kp, _col_map, exclude_dim="ges")
+        if not df_ges.empty and COL_GESTION in df_ges.columns:
+            gc = df_ges[COL_GESTION].value_counts().reset_index(); gc.columns = ["Gestión", "Cantidad"]
+            sel_ges = seg_get_xf(kp).get("ges", [])
+            ges_colors = [
+                SEG_GESTION_COLORS.get(g, "#64748b") if (not sel_ges or g in sel_ges)
+                else _hex_rgba(SEG_GESTION_COLORS.get(g, "#64748b"), 0.22)
+                for g in gc["Gestión"]
+            ]
+            fig = go.Figure(go.Pie(labels=gc["Gestión"], values=gc["Cantidad"], hole=0.55,
+                marker_colors=ges_colors, textfont=dict(size=10), textinfo="percent+value"))
+            fig.add_annotation(text=f"<b>{len(df_ges)}</b><br><span style='font-size:9px'>órdenes</span>",
+                x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
+            fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
+                margin=dict(l=0, r=0, t=0, b=30), height=270,
+                legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=10),
+                    orientation="h", yanchor="bottom", y=-0.18, xanchor="center", x=0.5))
+            ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                  on_select="rerun", key=f"{kp}_ges_pie")
+            if _seg_proc_event(ev, kp, "ges", "label"):
+                st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── PANEL: Veces derivado · distribución ─────────────────────────────────
     with col6:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Veces derivado · distribución</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Número de veces que el cliente ha sido derivado</div>', unsafe_allow_html=True)
-        if not df.empty and COL_DERIV in df.columns:
-            dc = df[COL_DERIV].dropna().astype(int).value_counts().sort_index().reset_index(); dc.columns = ["Veces","Cantidad"]
-            dc["Pct"] = (dc["Cantidad"]/dc["Cantidad"].sum()*100).round(1)
-            def dc_color(v): return "#0F9B8E" if v<=1 else ("#BA7517" if v<=3 else "#C83050")
-            fig = go.Figure(go.Bar(x=dc["Veces"].astype(str), y=dc["Cantidad"], marker_color=[dc_color(v) for v in dc["Veces"]],
-                text=dc.apply(lambda r: f"{r['Cantidad']} ({r['Pct']}%)", axis=1), textposition="outside", textfont=dict(size=10,color=TEXT_COLOR)))
-            chart_layout(fig, height=270); fig.update_xaxes(title_text="Número de derivaciones"); fig.update_yaxes(title_text="Órdenes"); fig.update_layout(showlegend=False)
+        if not df_xf.empty and COL_DERIV in df_xf.columns:
+            dc = df_xf[COL_DERIV].dropna().astype(int).value_counts().sort_index().reset_index(); dc.columns = ["Veces", "Cantidad"]
+            dc["Pct"] = (dc["Cantidad"] / dc["Cantidad"].sum() * 100).round(1)
+            def dc_color(v): return "#0F9B8E" if v <= 1 else ("#BA7517" if v <= 3 else "#C83050")
+            fig = go.Figure(go.Bar(x=dc["Veces"].astype(str), y=dc["Cantidad"],
+                marker_color=[dc_color(v) for v in dc["Veces"]],
+                text=dc.apply(lambda r: f"{r['Cantidad']} ({r['Pct']}%)", axis=1),
+                textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+            chart_layout(fig, height=270)
+            fig.update_xaxes(title_text="Número de derivaciones")
+            fig.update_yaxes(title_text="Órdenes")
+            fig.update_layout(showlegend=False)
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
             st.caption("🟢 1 derivación   🟡 2–3   🔴 4+")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    render_agente_dist(df, "Soporte HAINTECH", accent, key_prefix)
+    render_agente_dist(df_xf, "Soporte HAINTECH", accent, key_prefix)
 
-    # Tabla detalle Seguimiento
+    # ── Tabla detalle ─────────────────────────────────────────────────────────
     st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
     st.markdown('<div class="panel-title">Detalle de registros</div>', unsafe_allow_html=True)
     st.markdown('<div class="panel-sub">Todos los casos según filtros aplicados</div>', unsafe_allow_html=True)
-    cols_show = [c for c in ["Fecha","ID Orden","Rut Cliente","Soporte HAINTECH","Estado Solicitud Inicial", COL_GESTION, COL_DERIV, COL_COMP,"Estado Solicitud Final","Observacion Inicial"] if c in df.columns]
-    df_show = df[cols_show].copy()
+    cols_show = [c for c in ["Fecha", "ID Orden", "Rut Cliente", "Soporte HAINTECH", "Estado Solicitud Inicial",
+        COL_GESTION, COL_DERIV, COL_COMP, "Estado Solicitud Final", "Observacion Inicial"] if c in df_xf.columns]
+    df_show = df_xf[cols_show].copy()
     df_show["Fecha"] = df_show["Fecha"].dt.strftime("%d/%m/%Y")
     if COL_DERIV in df_show.columns:
         df_show[COL_DERIV] = df_show[COL_DERIV].apply(lambda x: str(int(x)) if pd.notna(x) else "—")
     if "Observacion Inicial" in df_show.columns:
         df_show["Observacion Inicial"] = df_show["Observacion Inicial"].fillna("").astype(str).str[:80]
     df_show = df_show.fillna("—")
-    df_show.columns = [c.replace(COL_COMP,"Completada").replace(COL_GESTION,"Gestión").replace(COL_DERIV,"# Deriv.") for c in df_show.columns]
+    df_show.columns = [c.replace(COL_COMP, "Completada").replace(COL_GESTION, "Gestión").replace(COL_DERIV, "# Deriv.") for c in df_show.columns]
     st.dataframe(df_show, width="stretch", height=300, hide_index=True)
-    st.download_button("⬇ Exportar CSV filtrado", df[cols_show].assign(Fecha=df["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"), f"seguimiento_{key_prefix}_filtrado.csv", "text/csv", key=f"dl_{key_prefix}_det")
+    st.download_button("⬇ Exportar CSV filtrado",
+        df_xf[cols_show].assign(Fecha=df_xf["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"),
+        f"seguimiento_{key_prefix}_filtrado.csv", "text/csv", key=f"dl_{key_prefix}_det")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Panel lista: match Estado Inicial → Estado Final ─────────────────────────
-    if not df.empty and "Estado Solicitud Inicial" in df.columns and "Estado Solicitud Final" in df.columns:
+    # ── Panel lista: match Estado Inicial → Estado Final ─────────────────────
+    if not df_xf.empty and "Estado Solicitud Inicial" in df_xf.columns and "Estado Solicitud Final" in df_xf.columns:
         flow = (
-            df[["Estado Solicitud Inicial","Estado Solicitud Final"]]
+            df_xf[["Estado Solicitud Inicial", "Estado Solicitud Final"]]
             .replace("nan", pd.NA).dropna()
-            .groupby(["Estado Solicitud Inicial","Estado Solicitud Final"])
+            .groupby(["Estado Solicitud Inicial", "Estado Solicitud Final"])
             .size().reset_index(name="Cantidad")
             .sort_values("Cantidad", ascending=False)
         )
