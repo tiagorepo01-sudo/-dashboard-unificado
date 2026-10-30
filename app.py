@@ -207,10 +207,32 @@ def soporte_metrics_nps(df):
     return result.fillna(0)
 
 def render_nps(df):
-    total       = len(df)
-    contactados = (df["Contactado"] == "Contactado").sum() if "Contactado" in df.columns else 0
-    no_contact  = (df["Contactado"] == "No Contactado").sum() if "Contactado" in df.columns else 0
-    intento3    = (df["Contactado"] == "Intento 3").sum() if "Contactado" in df.columns else 0
+    kp = "nps"
+
+    # ── Cross-filter setup ────────────────────────────────────────────────────
+    seg_init_xf(kp)
+    _col_map = {
+        "sop":  "Soporte",
+        "area": "Area",
+        "cont": "Contactado",
+    }
+    _dim_labels = {"sop": "Agente", "area": "Área", "cont": "Contactado"}
+
+    # ── Process all chart selection events BEFORE computing df_xf ───────────
+    for _dim, _sfx, _vk in [
+        ("sop",  "sop_bar",  "y"),
+        ("area", "area_bar", "y"),
+    ]:
+        _seg_proc_event(st.session_state.get(f"{kp}_{_sfx}"), kp, _dim, _vk, key_suffix=_sfx)
+
+    # df_xf = full cross-filter applied → used for KPIs, reactive charts, table
+    df_xf = seg_apply_xf(df, kp, _col_map)
+
+    # ── KPI metrics (from cross-filtered data) ────────────────────────────────
+    total       = len(df_xf)
+    contactados = (df_xf["Contactado"] == "Contactado").sum() if "Contactado" in df_xf.columns else 0
+    no_contact  = (df_xf["Contactado"] == "No Contactado").sum() if "Contactado" in df_xf.columns else 0
+    intento3    = (df_xf["Contactado"] == "Intento 3").sum() if "Contactado" in df_xf.columns else 0
     pct_efect   = round(contactados / total * 100, 1) if total else 0
 
     st.markdown(f"""
@@ -232,6 +254,35 @@ def render_nps(df):
       <div class="kpi-card" style="border-color:#BA7517"><div class="kpi-value" style="color:#BA7517">{intento3}</div><div class="kpi-label">Intento 3</div><div class="kpi-dot" style="background:#BA7517"></div></div>
     </div>""", unsafe_allow_html=True)
 
+    # ── Active cross-filters bar ──────────────────────────────────────────────
+    xf_state = seg_get_xf(kp)
+    act_xf   = [(d, v) for d, v in xf_state.items() if v]
+    if act_xf:
+        pills = "".join(
+            f'<span style="background:#111827;color:#93C5FD;font-size:10px;padding:2px 10px;'
+            f'border-radius:10px;border:1px solid #1E3A5F;margin-right:4px">'
+            f'<b style="color:#60A5FA">{_dim_labels.get(d,"?")}:</b> {" · ".join(str(x) for x in v)}'
+            f'</span>'
+            for d, v in act_xf
+        )
+        st.markdown(
+            f'<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;'
+            f'margin-bottom:8px;padding:8px 14px;background:#070B14;'
+            f'border:1px solid #1A2A3A;border-left:3px solid {NPS_ACCENT};border-radius:4px">'
+            f'<span style="font-size:9px;color:#334155;text-transform:uppercase;'
+            f'letter-spacing:.1em;margin-right:6px">FILTROS ACTIVOS</span>'
+            f'{pills}'
+            f'<span style="font-size:10px;color:#334155;margin-left:auto">'
+            f'{total} de {len(df)} registros</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        _bc = st.columns([2, 8])
+        with _bc[0]:
+            if st.button("🗑 Limpiar filtros", key=f"clr_{kp}", use_container_width=True):
+                seg_clear_xf(kp)
+                st.rerun()
+
     col1, col2, col3 = st.columns([1.1, 1.6, 1.3])
     p_style = f'style="border-color:{NPS_ACCENT}"'
 
@@ -239,8 +290,8 @@ def render_nps(df):
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Registro semanal</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Semanas seleccionadas</div>', unsafe_allow_html=True)
-        if not df.empty and "Semana_Actual" in df.columns and "Contactado" in df.columns:
-            pivot = df.groupby(["Semana_Actual","Contactado"]).size().unstack(fill_value=0).reset_index().sort_values("Semana_Actual")
+        if not df_xf.empty and "Semana_Actual" in df_xf.columns and "Contactado" in df_xf.columns:
+            pivot = df_xf.groupby(["Semana_Actual","Contactado"]).size().unstack(fill_value=0).reset_index().sort_values("Semana_Actual")
             for c in ["Contactado","No Contactado","Intento 3"]:
                 if c not in pivot.columns: pivot[c] = 0
             pivot["Total"] = pivot[["Contactado","No Contactado","Intento 3"]].sum(axis=1)
@@ -261,24 +312,28 @@ def render_nps(df):
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Árbol de causas · contactados</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Distribución por área y etapas</div>', unsafe_allow_html=True)
-        df_cont = df[df["Contactado"] == "Contactado"].copy() if "Contactado" in df.columns else pd.DataFrame()
+        df_area = seg_apply_xf(df, kp, _col_map, exclude_dim="area")
+        df_cont_area = df_area[df_area["Contactado"] == "Contactado"].copy() if "Contactado" in df_area.columns else pd.DataFrame()
         tab_bar, tab_sun = st.tabs(["Por área", "Por etapa 1→2→3"])
         with tab_bar:
-            if not df_cont.empty and "Area" in df_cont.columns:
-                ac = df_cont["Area"].fillna("Sin área").value_counts().reset_index()
+            if not df_cont_area.empty and "Area" in df_cont_area.columns:
+                sel_area = seg_get_xf(kp).get("area", [])
+                ac = df_cont_area["Area"].fillna("Sin área").value_counts().reset_index()
                 ac.columns = ["Area","Casos"]
                 ac["Pct"] = (ac["Casos"]/ac["Casos"].sum()*100).round(1)
-                ac["Color"] = ac["Area"].map(NPS_AREA_COLORS).fillna("#888")
+                ac["BaseColor"] = ac["Area"].map(NPS_AREA_COLORS).fillna("#888")
+                ac["Color"] = ac.apply(lambda r: r["BaseColor"] if (not sel_area or r["Area"] in sel_area) else _hex_rgba(r["BaseColor"], 0.22), axis=1)
                 fig = go.Figure(go.Bar(x=ac["Casos"], y=ac["Area"], orientation="h",
                     marker_color=ac["Color"].tolist(),
                     text=ac.apply(lambda r: f"{r['Casos']}  {r['Pct']}%", axis=1),
                     textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
                 chart_layout(fig, height=310); fig.update_yaxes(autorange="reversed")
                 fig.update_layout(showlegend=False, margin=dict(l=8,r=80,t=14,b=8))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                st.plotly_chart(fig, on_select="rerun", key="nps_area_bar", width="stretch", config={"displayModeBar": False})
         with tab_sun:
-            if not df_cont.empty and "Etapa1" in df_cont.columns:
-                ed = df_cont.groupby(["Etapa1","Etapa2","Etapa3"]).size().reset_index(name="Casos").dropna(subset=["Etapa1"]).sort_values("Casos",ascending=False).head(20)
+            df_cont_xf = df_xf[df_xf["Contactado"] == "Contactado"].copy() if "Contactado" in df_xf.columns else pd.DataFrame()
+            if not df_cont_xf.empty and "Etapa1" in df_cont_xf.columns:
+                ed = df_cont_xf.groupby(["Etapa1","Etapa2","Etapa3"]).size().reset_index(name="Casos").dropna(subset=["Etapa1"]).sort_values("Casos",ascending=False).head(20)
                 if not ed.empty:
                     fig = px.sunburst(ed, path=["Etapa1","Etapa2","Etapa3"], values="Casos",
                         color="Etapa1", color_discrete_sequence=px.colors.qualitative.Dark24)
@@ -291,7 +346,7 @@ def render_nps(df):
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">% Contactado por día</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Atendidas · tendencia diaria</div>', unsafe_allow_html=True)
-        df_at = df[df["Asignación"] == "Atendida"].copy() if "Asignación" in df.columns else pd.DataFrame()
+        df_at = df_xf[df_xf["Asignación"] == "Atendida"].copy() if "Asignación" in df_xf.columns else pd.DataFrame()
         if not df_at.empty and "Dia" in df_at.columns and "Contactado" in df_at.columns:
             dg = df_at.groupby(["Dia","Contactado"]).size().unstack(fill_value=0).reset_index()
             for c in ["Contactado","No Contactado"]:
@@ -317,20 +372,23 @@ def render_nps(df):
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Efectividad por agente</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">% contactado sobre asignados</div>', unsafe_allow_html=True)
-        if not df.empty and "Soporte" in df.columns:
-            ag = soporte_metrics_nps(df).sort_values("Pct_Efect", ascending=True)
+        df_sop = seg_apply_xf(df, kp, _col_map, exclude_dim="sop")
+        if not df_sop.empty and "Soporte" in df_sop.columns:
+            sel_sop = seg_get_xf(kp).get("sop", [])
+            ag = soporte_metrics_nps(df_sop).sort_values("Pct_Efect", ascending=True)
             fig = go.Figure()
             for _, row in ag.iterrows():
-                c = "#0F9B8E" if row["Pct_Efect"] >= 50 else "#C83050"
+                base_c = "#0F9B8E" if row["Pct_Efect"] >= 50 else "#C83050"
+                c = base_c if (not sel_sop or row["Soporte"] in sel_sop) else _hex_rgba(base_c, 0.22)
                 fig.add_trace(go.Bar(x=[row["Pct_Efect"]], y=[row["Soporte"]], orientation="h",
                     marker_color=c,
                     text=f"{row['Pct_Efect']}%  ({int(row['Contactados'])}/{int(row['Total'])})",
                     textposition="outside", textfont=dict(size=10, color=TEXT_COLOR), showlegend=False))
             fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1,
                 annotation_text="meta 50%", annotation_font=dict(color="#353545",size=9), annotation_position="top")
-            chart_layout(fig, height=220); fig.update_xaxes(range=[0,115], title_text="%")
+            chart_layout(fig, height=220); fig.update_xaxes(range=[0,100], fixedrange=True, title_text="%")
             fig.update_layout(margin=dict(l=8,r=90,t=14,b=8))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(fig, on_select="rerun", key="nps_sop_bar", width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col5:
@@ -338,8 +396,8 @@ def render_nps(df):
         st.markdown('<div class="panel-title">Cumplimiento de visita</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Resultado del agendamiento técnico</div>', unsafe_allow_html=True)
         col_cumpl = "cumplimiento_fecha_inicial_agendamiento"
-        if col_cumpl in df.columns:
-            df_c = df[df[col_cumpl].notna()].copy()
+        if col_cumpl in df_xf.columns:
+            df_c = df_xf[df_xf[col_cumpl].notna()].copy()
             if not df_c.empty:
                 cumpl_map = {
                     "Sí se cumplió, el Técnico llego el día y la hora acordadas": "Cumplió · día y hora",
@@ -367,8 +425,8 @@ def render_nps(df):
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Asignación por semana</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Atendida vs Gestión</div>', unsafe_allow_html=True)
-        if not df.empty and "Semana_Actual" in df.columns and "Asignación" in df.columns:
-            asig = df.groupby(["Semana_Actual","Asignación"]).size().unstack(fill_value=0).reset_index()
+        if not df_xf.empty and "Semana_Actual" in df_xf.columns and "Asignación" in df_xf.columns:
+            asig = df_xf.groupby(["Semana_Actual","Asignación"]).size().unstack(fill_value=0).reset_index()
             fig = go.Figure()
             for cn in [c for c in ["Atendida","Gestión"] if c in asig.columns]:
                 fig.add_trace(go.Bar(x=asig["Semana_Actual"].astype(str), y=asig[cn], name=cn,
@@ -380,8 +438,8 @@ def render_nps(df):
 
     # Ranking NPS
     st.markdown(f'<div class="panel-title" style="color:white;font-family:\'Barlow Condensed\',sans-serif;font-size:15px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:18px 0 10px;">🏆 RANKING · SOPORTES</div>', unsafe_allow_html=True)
-    if not df.empty and "Soporte" in df.columns:
-        rank_df = soporte_metrics_nps(df)
+    if not df_xf.empty and "Soporte" in df_xf.columns:
+        rank_df = soporte_metrics_nps(df_xf)
         sort_opts = {"% Efectividad":("Pct_Efect",False),"Total asignados":("Total",False),"% No contactado":("Pct_NoCont",False),"% Intento 3":("Pct_Int3",False)}
         cs1, cs2 = st.columns([2,1])
         with cs1: sort_label = st.selectbox("Ordenar por", list(sort_opts.keys()), key="nps_sort")
@@ -400,21 +458,21 @@ def render_nps(df):
             st.dataframe(tbl, width="stretch", height=min(400, len(tbl)*35+40))
             st.download_button("⬇ Exportar CSV", tbl.to_csv().encode("utf-8"), "ranking_nps.csv", "text/csv", key="dl_nps")
 
-    render_agente_dist(df, "Soporte", NPS_ACCENT, "nps")
+    render_agente_dist(df_xf, "Soporte", NPS_ACCENT, "nps")
 
     # Tabla detalle NPS
     st.markdown(f'<div class="panel" style="border-color:{NPS_ACCENT}">', unsafe_allow_html=True)
     st.markdown('<div class="panel-title">Detalle de registros</div>', unsafe_allow_html=True)
     st.markdown('<div class="panel-sub">Todos los casos según filtros</div>', unsafe_allow_html=True)
-    cols_show = [c for c in ["Fecha","Soporte","Asignación","Contactado","nombre_cliente","Zona","Tipo_Red","Area","Etapa1","Semana_Actual","Observacion contacto telefonico cliente."] if c in df.columns]
-    df_show = df[cols_show].copy()
+    cols_show = [c for c in ["Fecha","Soporte","Asignación","Contactado","nombre_cliente","Zona","Tipo_Red","Area","Etapa1","Semana_Actual","Observacion contacto telefonico cliente."] if c in df_xf.columns]
+    df_show = df_xf[cols_show].copy()
     df_show["Fecha"] = df_show["Fecha"].dt.strftime("%d/%m/%Y")
     if "Observacion contacto telefonico cliente." in df_show.columns:
         df_show["Observacion contacto telefonico cliente."] = df_show["Observacion contacto telefonico cliente."].fillna("").astype(str).str[:80]
     df_show = df_show.fillna("—")
     df_show.columns = [c.replace("Observacion contacto telefonico cliente.","Observación").replace("nombre_cliente","Cliente").replace("Semana_Actual","Sem.") for c in df_show.columns]
     st.dataframe(df_show, width="stretch", height=280, hide_index=True)
-    st.download_button("⬇ Exportar CSV filtrado", df[cols_show].assign(Fecha=df["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"), "nps_filtrado.csv", "text/csv", key="dl_nps_det")
+    st.download_button("⬇ Exportar CSV filtrado", df_xf[cols_show].assign(Fecha=df_xf["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"), "nps_filtrado.csv", "text/csv", key="dl_nps_det")
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(f'<div class="dash-footer" style="border-color:{NPS_ACCENT}"><span>Fuente: Google Sheets · Gestión NPS · Actualización automática</span><span>Claro Colombia · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
@@ -453,11 +511,37 @@ def load_qa():
     return df
 
 def render_qa(df, source_name="QA Migración"):
-    total       = len(df)
-    completadas = (df[COL_COMP] == "Si").sum() if COL_COMP in df.columns else 0
-    no_comp     = (df[COL_COMP] == "No").sum() if COL_COMP in df.columns else 0
-    requieren   = (df[COL_INTERV] == "Si").sum() if COL_INTERV in df.columns else 0
-    sin_asist   = (df[COL_INTERV] == "Sin Asistencia").sum() if COL_INTERV in df.columns else 0
+    kp = "qa"
+
+    # ── Detect dynamic columns at top level ──────────────────────────────────
+    tec_col = next((c for c in ["Tecnico Auditado","tecnico","Técnico"] if c in df.columns), None)
+
+    # ── Cross-filter setup ────────────────────────────────────────────────────
+    seg_init_xf(kp)
+    _col_map = {
+        "est": "Estado Solicitud Inicial",
+        "sop": "Soporte HAINTECH",
+        "int": COL_INTERV,
+        "tec": tec_col,
+    }
+    _dim_labels = {"est": "Estado inicial", "sop": "Soporte", "int": "Intervención", "tec": "Técnico"}
+
+    # ── Process all chart selection events BEFORE computing df_xf ───────────
+    for _dim, _sfx, _vk in [
+        ("est", "est_bar", "y"), ("est", "est_pie", "label"),
+        ("sop", "sop_bar", "y"), ("int", "int_pie", "label"), ("tec", "tec_bar", "y"),
+    ]:
+        _seg_proc_event(st.session_state.get(f"{kp}_{_sfx}"), kp, _dim, _vk, key_suffix=_sfx)
+
+    # df_xf = full cross-filter applied → used for KPIs, reactive charts, table
+    df_xf = seg_apply_xf(df, kp, _col_map)
+
+    # ── KPI metrics (from cross-filtered data) ────────────────────────────────
+    total       = len(df_xf)
+    completadas = (df_xf[COL_COMP] == "Si").sum() if COL_COMP in df_xf.columns else 0
+    no_comp     = (df_xf[COL_COMP] == "No").sum() if COL_COMP in df_xf.columns else 0
+    requieren   = (df_xf[COL_INTERV] == "Si").sum() if COL_INTERV in df_xf.columns else 0
+    sin_asist   = (df_xf[COL_INTERV] == "Sin Asistencia").sum() if COL_INTERV in df_xf.columns else 0
     pct_comp    = round(completadas / total * 100, 1) if total else 0
     kpi_color   = rank_color(pct_comp)
 
@@ -480,6 +564,35 @@ def render_qa(df, source_name="QA Migración"):
       <div class="kpi-card" style="border-color:#C83050"><div class="kpi-value" style="color:#C83050">{sin_asist}</div><div class="kpi-label">Sin asistencia</div><div class="kpi-dot" style="background:#C83050"></div></div>
     </div>""", unsafe_allow_html=True)
 
+    # ── Active cross-filters bar ──────────────────────────────────────────────
+    xf_state = seg_get_xf(kp)
+    act_xf   = [(d, v) for d, v in xf_state.items() if v]
+    if act_xf:
+        pills = "".join(
+            f'<span style="background:#111827;color:#93C5FD;font-size:10px;padding:2px 10px;'
+            f'border-radius:10px;border:1px solid #1E3A5F;margin-right:4px">'
+            f'<b style="color:#60A5FA">{_dim_labels.get(d,"?")}:</b> {" · ".join(str(x) for x in v)}'
+            f'</span>'
+            for d, v in act_xf
+        )
+        st.markdown(
+            f'<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;'
+            f'margin-bottom:8px;padding:8px 14px;background:#070B14;'
+            f'border:1px solid #1A2A3A;border-left:3px solid {QA_ACCENT};border-radius:4px">'
+            f'<span style="font-size:9px;color:#334155;text-transform:uppercase;'
+            f'letter-spacing:.1em;margin-right:6px">FILTROS ACTIVOS</span>'
+            f'{pills}'
+            f'<span style="font-size:10px;color:#334155;margin-left:auto">'
+            f'{total} de {len(df)} registros</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        _bc = st.columns([2, 8])
+        with _bc[0]:
+            if st.button("🗑 Limpiar filtros", key=f"clr_{kp}", use_container_width=True):
+                seg_clear_xf(kp)
+                st.rerun()
+
     p_style = f'style="border-color:{QA_ACCENT}"'
     col1, col2, col3 = st.columns([1.1, 1.6, 1.3])
 
@@ -487,8 +600,8 @@ def render_qa(df, source_name="QA Migración"):
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Registro semanal</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Completadas vs No completadas por semana</div>', unsafe_allow_html=True)
-        if not df.empty and COL_COMP in df.columns:
-            pivot = df.groupby(["Semana", COL_COMP]).size().unstack(fill_value=0).reset_index().sort_values("Semana")
+        if not df_xf.empty and COL_COMP in df_xf.columns:
+            pivot = df_xf.groupby(["Semana", COL_COMP]).size().unstack(fill_value=0).reset_index().sort_values("Semana")
             for c in ["Si","No"]:
                 if c not in pivot.columns: pivot[c] = 0
             pivot["Total"] = pivot["Si"] + pivot["No"]
@@ -505,30 +618,34 @@ def render_qa(df, source_name="QA Migración"):
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Estado solicitud inicial</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Distribución de motivos de apertura</div>', unsafe_allow_html=True)
-        if not df.empty and "Estado Solicitud Inicial" in df.columns:
+        df_est = seg_apply_xf(df, kp, _col_map, exclude_dim="est")
+        if not df_est.empty and "Estado Solicitud Inicial" in df_est.columns:
+            sel_est = seg_get_xf(kp).get("est", [])
             tb, tp = st.tabs(["Barras","Donut"])
-            cnt = df["Estado Solicitud Inicial"].value_counts().reset_index(); cnt.columns = ["Estado","Cantidad"]
+            cnt = df_est["Estado Solicitud Inicial"].value_counts().reset_index(); cnt.columns = ["Estado","Cantidad"]
             cnt["Pct"] = (cnt["Cantidad"]/cnt["Cantidad"].sum()*100).round(1)
             cnt["Color"] = cnt["Estado"].map(QA_ESTADO_COLORS).fillna("#64748b")
+            if sel_est:
+                cnt["Color"] = cnt.apply(lambda r: r["Color"] if r["Estado"] in sel_est else _hex_rgba(r["Color"], 0.22), axis=1)
             cnt = cnt.sort_values("Cantidad", ascending=True)
             with tb:
                 fig = go.Figure(go.Bar(x=cnt["Cantidad"], y=cnt["Estado"], orientation="h", marker_color=cnt["Color"].tolist(),
                     text=cnt.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1), textposition="outside", textfont=dict(size=10,color=TEXT_COLOR)))
                 chart_layout(fig, height=310); fig.update_layout(showlegend=False, margin=dict(l=8,r=90,t=14,b=8))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                st.plotly_chart(fig, on_select="rerun", key="qa_est_bar", width="stretch", config={"displayModeBar": False})
             with tp:
                 fig = go.Figure(go.Pie(labels=cnt["Estado"], values=cnt["Cantidad"], hole=0.55, marker_colors=cnt["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
-                fig.add_annotation(text=f"<b>{total}</b><br><span style='font-size:9px'>órdenes</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14,color="white",family="Barlow Condensed"))
+                fig.add_annotation(text=f"<b>{df_est['Estado Solicitud Inicial'].count()}</b><br><span style='font-size:9px'>órdenes</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14,color="white",family="Barlow Condensed"))
                 fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR,family=FONT_FAMILY), margin=dict(l=0,r=0,t=0,b=0), height=310, legend=dict(bgcolor=CHART_BG,bordercolor=GRID_COLOR,font=dict(size=9),x=1.0,y=0.5))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                st.plotly_chart(fig, on_select="rerun", key="qa_est_pie", width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col3:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">% Completitud por día</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Tendencia diaria</div>', unsafe_allow_html=True)
-        if not df.empty and COL_COMP in df.columns and "ID Orden" in df.columns:
-            daily = df.groupby("Fecha").agg(Total=("ID Orden","count"), Comp=(COL_COMP, lambda x: (x=="Si").sum())).reset_index().sort_values("Fecha")
+        if not df_xf.empty and COL_COMP in df_xf.columns and "ID Orden" in df_xf.columns:
+            daily = df_xf.groupby("Fecha").agg(Total=("ID Orden","count"), Comp=(COL_COMP, lambda x: (x=="Si").sum())).reset_index().sort_values("Fecha")
             daily["Pct_C"] = (daily["Comp"]/daily["Total"]*100).round(1)
             daily["Pct_NC"] = (100-daily["Pct_C"]).round(1)
             fig = go.Figure()
@@ -545,60 +662,68 @@ def render_qa(df, source_name="QA Migración"):
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Completitud por soporte</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">% migración exitosa por agente</div>', unsafe_allow_html=True)
-        if not df.empty and COL_COMP in df.columns and "Soporte HAINTECH" in df.columns:
-            ag = groupby_comp(df, "Soporte HAINTECH", COL_COMP).sort_values("Pct_Comp", ascending=True)
+        df_sop = seg_apply_xf(df, kp, _col_map, exclude_dim="sop")
+        if not df_sop.empty and COL_COMP in df_sop.columns and "Soporte HAINTECH" in df_sop.columns:
+            sel_sop = seg_get_xf(kp).get("sop", [])
+            ag = groupby_comp(df_sop, "Soporte HAINTECH", COL_COMP).sort_values("Pct_Comp", ascending=True)
             fig = go.Figure()
             for _, row in ag.iterrows():
-                c = "#0F9B8E" if row["Pct_Comp"] >= 50 else "#C83050"
+                base_c = "#0F9B8E" if row["Pct_Comp"] >= 50 else "#C83050"
+                c = base_c if (not sel_sop or row["Soporte HAINTECH"] in sel_sop) else _hex_rgba(base_c, 0.22)
                 fig.add_trace(go.Bar(x=[row["Pct_Comp"]], y=[row["Soporte HAINTECH"]], orientation="h", marker_color=c, text=f"{row['Pct_Comp']}%  ({int(row['Completadas'])}/{int(row['Total'])})", textposition="outside", textfont=dict(size=10,color=TEXT_COLOR), showlegend=False))
             fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="meta 50%", annotation_font=dict(color="#353545",size=9), annotation_position="top")
-            chart_layout(fig, height=230); fig.update_xaxes(range=[0,120], title_text="%"); fig.update_layout(margin=dict(l=8,r=90,t=14,b=8))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            chart_layout(fig, height=230); fig.update_xaxes(range=[0,100], fixedrange=True, title_text="%"); fig.update_layout(margin=dict(l=8,r=90,t=14,b=8))
+            st.plotly_chart(fig, on_select="rerun", key="qa_sop_bar", width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col5:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Requiere intervención</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Distribución de nivel de gestión</div>', unsafe_allow_html=True)
-        if not df.empty and COL_INTERV in df.columns:
-            ig = df[COL_INTERV].value_counts().reset_index(); ig.columns = ["Tipo","Cantidad"]
+        df_int = seg_apply_xf(df, kp, _col_map, exclude_dim="int")
+        if not df_int.empty and COL_INTERV in df_int.columns:
+            sel_int = seg_get_xf(kp).get("int", [])
+            ig = df_int[COL_INTERV].value_counts().reset_index(); ig.columns = ["Tipo","Cantidad"]
             IC = {"Si":"#BA7517","No":"#0F9B8E","Sin Asistencia":"#C83050"}
-            fig = go.Figure(go.Pie(labels=ig["Tipo"], values=ig["Cantidad"], hole=0.55, marker_colors=[IC.get(t,"#888") for t in ig["Tipo"]], textfont=dict(size=10), textinfo="percent"))
-            fig.add_annotation(text=f"<b>{total}</b><br><span style='font-size:9px'>órdenes</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14,color="white",family="Barlow Condensed"))
+            colors_int = [IC.get(t,"#888") if (not sel_int or t in sel_int) else _hex_rgba(IC.get(t,"#888"), 0.22) for t in ig["Tipo"]]
+            fig = go.Figure(go.Pie(labels=ig["Tipo"], values=ig["Cantidad"], hole=0.55, marker_colors=colors_int, textfont=dict(size=10), textinfo="percent"))
+            fig.add_annotation(text=f"<b>{len(df_int)}</b><br><span style='font-size:9px'>órdenes</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14,color="white",family="Barlow Condensed"))
             fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR,family=FONT_FAMILY), margin=dict(l=0,r=0,t=0,b=30), height=230, legend=dict(bgcolor=CHART_BG,bordercolor=GRID_COLOR,font=dict(size=10),orientation="h",yanchor="bottom",y=-0.22,xanchor="center",x=0.5))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(fig, on_select="rerun", key="qa_int_pie", width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col6:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Top técnicos · completitud</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Top 15 por volumen — color según tasa de éxito</div>', unsafe_allow_html=True)
-        tec_col = next((c for c in ["Tecnico Auditado","tecnico","Técnico"] if c in df.columns), None)
-        if not df.empty and tec_col and COL_COMP in df.columns:
-            tec = groupby_comp(df, tec_col, COL_COMP).nlargest(15,"Total").sort_values("Total",ascending=True)
-            tec["Color"] = tec["Pct_Comp"].apply(lambda p: "#0F9B8E" if p>=60 else ("#BA7517" if p>=40 else "#C83050"))
+        df_tec = seg_apply_xf(df, kp, _col_map, exclude_dim="tec")
+        if not df_tec.empty and tec_col and COL_COMP in df_tec.columns:
+            sel_tec = seg_get_xf(kp).get("tec", [])
+            tec = groupby_comp(df_tec, tec_col, COL_COMP).nlargest(15,"Total").sort_values("Total",ascending=True)
+            tec["BaseColor"] = tec["Pct_Comp"].apply(lambda p: "#0F9B8E" if p>=60 else ("#BA7517" if p>=40 else "#C83050"))
+            tec["Color"] = tec.apply(lambda r: r["BaseColor"] if (not sel_tec or r[tec_col] in sel_tec) else _hex_rgba(r["BaseColor"], 0.22), axis=1)
             fig = go.Figure(go.Bar(x=tec["Total"], y=tec[tec_col], orientation="h", marker_color=tec["Color"].tolist(),
                 text=tec.apply(lambda r: f"{int(r['Total'])}  ({r['Pct_Comp']}%)", axis=1), textposition="outside", textfont=dict(size=10,color=TEXT_COLOR)))
             chart_layout(fig, height=260); fig.update_layout(showlegend=False, margin=dict(l=8,r=110,t=14,b=8)); fig.update_xaxes(title_text="Órdenes")
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(fig, on_select="rerun", key="qa_tec_bar", width="stretch", config={"displayModeBar": False})
             st.caption("🟢 ≥60%   🟡 40–60%   🔴 <40%")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    render_agente_dist(df, "Soporte HAINTECH", QA_ACCENT, "qa")
+    render_agente_dist(df_xf, "Soporte HAINTECH", QA_ACCENT, "qa")
 
     # Tabla detalle QA
     st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
     st.markdown('<div class="panel-title">Detalle de registros</div>', unsafe_allow_html=True)
     st.markdown('<div class="panel-sub">Todos los casos según filtros aplicados</div>', unsafe_allow_html=True)
-    cols_show = [c for c in ["Fecha","ID Orden","Tecnico Auditado","Soporte HAINTECH","Estado Solicitud Inicial", COL_INTERV, COL_COMP,"Estado Solicitud Final","Observacion"] if c in df.columns]
-    df_show = df[cols_show].copy()
+    cols_show = [c for c in ["Fecha","ID Orden","Tecnico Auditado","Soporte HAINTECH","Estado Solicitud Inicial", COL_INTERV, COL_COMP,"Estado Solicitud Final","Observacion"] if c in df_xf.columns]
+    df_show = df_xf[cols_show].copy()
     df_show["Fecha"] = df_show["Fecha"].dt.strftime("%d/%m/%Y")
     if "Observacion" in df_show.columns:
         df_show["Observacion"] = df_show["Observacion"].fillna("").astype(str).str[:80]
     df_show = df_show.fillna("—")
     df_show.columns = [c.replace(COL_INTERV,"Intervención").replace(COL_COMP,"Completada") for c in df_show.columns]
     st.dataframe(df_show, width="stretch", height=280, hide_index=True)
-    st.download_button("⬇ Exportar CSV filtrado", df[cols_show].assign(Fecha=df["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"), "qa_filtrado.csv", "text/csv", key="dl_qa_det")
+    st.download_button("⬇ Exportar CSV filtrado", df_xf[cols_show].assign(Fecha=df_xf["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"), "qa_filtrado.csv", "text/csv", key="dl_qa_det")
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(f'<div class="dash-footer" style="border-color:{QA_ACCENT}"><span>Fuente: Google Sheets · {source_name} · Actualización automática cada 5 min</span><span>HAINTECH · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
