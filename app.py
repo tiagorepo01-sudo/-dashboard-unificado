@@ -912,6 +912,29 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
                     ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                          on_select="rerun", key=f"{kp}_ef_bar")
+                    # ── TEMP DEEP DEBUG ──────────────────────────────────────
+                    _dbg_ev_type = type(ev).__name__
+                    _dbg_pts_raw = []
+                    try:
+                        _dbg_pts_raw = list(ev.selection.points)
+                    except Exception:
+                        try:
+                            _dbg_pts_raw = list((ev or {}).get("selection", {}).get("points", []))
+                        except Exception:
+                            pass
+                    _dbg_ss = st.session_state.get(f"{kp}_ef_bar", "NOT_IN_SS")
+                    _dbg_pt0 = {}
+                    if _dbg_pts_raw:
+                        p0 = _dbg_pts_raw[0]
+                        _dbg_pt0 = dict(p0) if isinstance(p0, dict) else {a: getattr(p0, a, "?") for a in ("x","y","label","curve_number","point_number")}
+                    st.info(
+                        f"🔬 **[EF BAR DBG {nombre}]** "
+                        f"ev\_type=`{_dbg_ev_type}` | "
+                        f"pts\_count=`{len(_dbg_pts_raw)}` | "
+                        f"pt0=`{_dbg_pt0}` | "
+                        f"ss\_type=`{type(_dbg_ss).__name__}`"
+                    )
+                    # ─────────────────────────────────────────────────────────
                     if _seg_proc_event(ev, kp, "ef", "y"): _need_rerun = True
                 with tp_f:
                     fig = go.Figure(go.Pie(labels=fc["Estado"], values=fc["Cantidad"], hole=0.55,
