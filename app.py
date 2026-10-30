@@ -1065,7 +1065,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             fig.add_vline(x=50, line_dash="dash", line_color="#353545", line_width=1,
                 annotation_text="meta 50%", annotation_font=dict(color="#353545", size=9), annotation_position="top")
             chart_layout(fig, height=max(200, n_tec * 20))
-            fig.update_xaxes(range=[0, 125], title_text="%")
+            fig.update_xaxes(range=[0, 100], fixedrange=True, title_text="%")
             fig.update_layout(margin=dict(l=8, r=120, t=10, b=8))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                              on_select="rerun", key=f"{kp}_tec_bar")
