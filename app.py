@@ -746,6 +746,16 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
     # df_xf = full cross-filter applied → used for KPIs, reactive charts, table
     df_xf = seg_apply_xf(df, kp, _col_map)
 
+    # ── TEMPORARY DIAGNOSTIC ─ remove after root cause confirmed ─────────────
+    _dbg_xf   = dict(seg_get_xf(kp))
+    _dbg_cols = {k: (v if v else "❌ None") for k, v in _col_map.items()}
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"**🔍 [{nombre}] diagnóstico**")
+    st.sidebar.caption(f"xf state: `{_dbg_xf}`")
+    st.sidebar.caption(f"df_xf: **{len(df_xf)}** / df total: **{len(df)}**")
+    st.sidebar.caption(f"cols detectadas: `{_dbg_cols}`")
+    # ─────────────────────────────────────────────────────────────────────────
+
     # ── KPI metrics (from cross-filtered data) ────────────────────────────────
     total        = len(df_xf)
     completadas  = (df_xf[COL_COMP] == "Si").sum() if COL_COMP in df_xf.columns else 0
