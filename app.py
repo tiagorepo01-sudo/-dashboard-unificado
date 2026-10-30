@@ -1205,13 +1205,15 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
     st.markdown('<div class="panel-title">Detalle de registros</div>', unsafe_allow_html=True)
     st.markdown('<div class="panel-sub">Todos los casos según filtros aplicados</div>', unsafe_allow_html=True)
     cols_show = [c for c in ["Fecha", "ID Orden", "Rut Cliente", "Soporte HAINTECH", "Estado Solicitud Inicial",
-        COL_GESTION, COL_DERIV, COL_COMP, "Estado Solicitud Final", "Observacion Inicial"] if c in df_xf.columns]
+        COL_GESTION, COL_DERIV, COL_COMP, "Estado Solicitud Final",
+        "Observacion Inicial", "Observacion"] if c in df_xf.columns]
     df_show = df_xf[cols_show].copy()
     df_show["Fecha"] = df_show["Fecha"].dt.strftime("%d/%m/%Y")
     if COL_DERIV in df_show.columns:
         df_show[COL_DERIV] = df_show[COL_DERIV].apply(lambda x: str(int(x)) if pd.notna(x) else "—")
-    if "Observacion Inicial" in df_show.columns:
-        df_show["Observacion Inicial"] = df_show["Observacion Inicial"].fillna("").astype(str).str[:80]
+    for _obs_col in ("Observacion Inicial", "Observacion"):
+        if _obs_col in df_show.columns:
+            df_show[_obs_col] = df_show[_obs_col].fillna("").astype(str).str[:120]
     df_show = df_show.fillna("—")
     df_show.columns = [c.replace(COL_COMP, "Completada").replace(COL_GESTION, "Gestión").replace(COL_DERIV, "# Deriv.") for c in df_show.columns]
     st.dataframe(df_show, width="stretch", height=300, hide_index=True)
