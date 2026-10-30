@@ -820,6 +820,8 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
         st.markdown(f'<div class="dash-footer" style="border-color:{accent}"><span>Fuente: Google Sheets · Seguimiento {nombre} · Actualización automática cada 5 min</span><span>HAINTECH · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
         return
 
+    _need_rerun = False
+
     if has_escalada:
         col2, col3, col2b, col1 = st.columns([1.3, 1.2, 1.1, 1.0])
     else:
@@ -853,8 +855,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
                     ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                          on_select="rerun", key=f"{kp}_mot_bar")
-                    if _seg_proc_event(ev, kp, "mot", "y"):
-                        st.rerun()
+                    _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "mot", "y")
                 with tp_m:
                     fig = go.Figure(go.Pie(labels=mv["Motivo"], values=mv["Cantidad"], hole=0.55,
                         textfont=dict(size=10), textinfo="percent"))
@@ -865,8 +866,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
                     ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                          on_select="rerun", key=f"{kp}_mot_pie")
-                    if _seg_proc_event(ev, kp, "mot", "label"):
-                        st.rerun()
+                    _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "mot", "label")
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ── PANEL: Estado solicitud final ─────────────────────────────────────────
@@ -897,8 +897,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
                     ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                          on_select="rerun", key=f"{kp}_ef_bar")
-                    if _seg_proc_event(ev, kp, "ef", "y"):
-                        st.rerun()
+                    _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "ef", "y")
                 with tp_f:
                     fig = go.Figure(go.Pie(labels=fc["Estado"], values=fc["Cantidad"], hole=0.55,
                         marker_colors=fc["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
@@ -909,8 +908,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
                     ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                          on_select="rerun", key=f"{kp}_ef_pie")
-                    if _seg_proc_event(ev, kp, "ef", "label"):
-                        st.rerun()
+                    _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "ef", "label")
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ── PANEL: M escalada eco ─────────────────────────────────────────────────
@@ -943,8 +941,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
                     ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                          on_select="rerun", key=f"{kp}_esc_bar")
-                    if _seg_proc_event(ev, kp, "esc", "y"):
-                        st.rerun()
+                    _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "esc", "y")
                 with tp_e:
                     fig = go.Figure(go.Pie(
                         labels=ec["Valor"], values=ec["Cantidad"], hole=0.55,
@@ -960,8 +957,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
                     ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                          on_select="rerun", key=f"{kp}_esc_pie")
-                    if _seg_proc_event(ev, kp, "esc", "label"):
-                        st.rerun()
+                    _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "esc", "label")
             st.markdown('</div>', unsafe_allow_html=True)
 
     # ── PANEL: Orden Ducto Tapado Anteriormente ───────────────────────────────
@@ -993,8 +989,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
                     ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                          on_select="rerun", key=f"{kp}_duc_bar")
-                    if _seg_proc_event(ev, kp, "duc", "y"):
-                        st.rerun()
+                    _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "duc", "y")
                 with tp_d:
                     fig = go.Figure(go.Pie(labels=dt["Valor"], values=dt["Cantidad"], hole=0.55,
                         marker_colors=dt["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
@@ -1005,14 +1000,20 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                         legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
                     ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                          on_select="rerun", key=f"{kp}_duc_pie")
-                    if _seg_proc_event(ev, kp, "duc", "label"):
-                        st.rerun()
+                    _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "duc", "label")
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ── PANEL: Completitud por técnico + % Completitud por día ───────────────
     _c_tec, _c_dia = st.columns([1.5, 1.0])
     with _c_tec:
         df_tec = seg_apply_xf(df, kp, _col_map, exclude_dim="tec")
+        if not df_tec.empty and COL_COMP in df_tec.columns and tec_col_seg:
+            pass  # rendered below
+        else:
+            st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-title">Completitud por técnico</div>', unsafe_allow_html=True)
+            st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos disponibles</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
         if not df_tec.empty and COL_COMP in df_tec.columns and tec_col_seg:
             st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
             st.markdown('<div class="panel-title">Completitud por técnico</div>', unsafe_allow_html=True)
@@ -1037,8 +1038,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             fig.update_layout(margin=dict(l=8, r=120, t=10, b=8))
             ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                   on_select="rerun", key=f"{kp}_tec_bar")
-            if _seg_proc_event(ev, kp, "tec", "y"):
-                st.rerun()
+            _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "tec", "y")
             st.markdown('</div>', unsafe_allow_html=True)
     with _c_dia:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
@@ -1086,8 +1086,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             fig.update_layout(margin=dict(l=8, r=110, t=14, b=8))
             ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                   on_select="rerun", key=f"{kp}_sop_bar")
-            if _seg_proc_event(ev, kp, "sop", "y"):
-                st.rerun()
+            _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "sop", "y")
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ── PANEL: Registro semanal ───────────────────────────────────────────────
@@ -1137,8 +1136,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
                     orientation="h", yanchor="bottom", y=-0.18, xanchor="center", x=0.5))
             ev = st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
                                   on_select="rerun", key=f"{kp}_ges_pie")
-            if _seg_proc_event(ev, kp, "ges", "label"):
-                st.rerun()
+            _need_rerun = _need_rerun or _seg_proc_event(ev, kp, "ges", "label")
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ── PANEL: Veces derivado · distribución ─────────────────────────────────
@@ -1216,6 +1214,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(f'<div class="dash-footer" style="border-color:{accent}"><span>Fuente: Google Sheets · Seguimiento {nombre} · Actualización automática cada 5 min</span><span>HAINTECH · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
+
+    if _need_rerun:
+        st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
