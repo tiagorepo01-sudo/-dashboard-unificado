@@ -910,8 +910,6 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
     completadas  = (df_xf[COL_COMP] == "Si").sum() if COL_COMP in df_xf.columns else 0
     no_comp      = (df_xf[COL_COMP] == "No").sum() if COL_COMP in df_xf.columns else 0
     pct_comp     = round(completadas / total * 100, 1) if total else 0
-    prom_deriv   = round(df_xf[COL_DERIV].mean(), 1) if COL_DERIV in df_xf.columns and not df_xf[COL_DERIV].isna().all() else 0
-    cnt_haintech = (df_xf[COL_GESTION] == "HAINTECH").sum() if COL_GESTION in df_xf.columns else 0
     kpi_color    = rank_color(pct_comp)
 
     st.markdown(f"""
@@ -929,8 +927,6 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
       <div class="kpi-card" style="border-color:#0F9B8E"><div class="kpi-value" style="color:#0F9B8E">{completadas}</div><div class="kpi-label">Completadas</div><div class="kpi-dot" style="background:#0F9B8E"></div></div>
       <div class="kpi-card" style="border-color:#C83050"><div class="kpi-value" style="color:#C83050">{no_comp}</div><div class="kpi-label">No completadas</div><div class="kpi-dot" style="background:#C83050"></div></div>
       <div class="kpi-card" style="border-color:{kpi_color}"><div class="kpi-value" style="color:{kpi_color}">{pct_comp}%</div><div class="kpi-label">% Completitud</div><div class="kpi-dot" style="background:{kpi_color}"></div></div>
-      <div class="kpi-card" style="border-color:#BA7517"><div class="kpi-value" style="color:#BA7517">{prom_deriv}x</div><div class="kpi-label">Prom. derivaciones</div><div class="kpi-dot" style="background:#BA7517"></div></div>
-      <div class="kpi-card" style="border-color:#7F77DD"><div class="kpi-value" style="color:#7F77DD">{cnt_haintech}</div><div class="kpi-label">Gestión HAINTECH</div><div class="kpi-dot" style="background:#7F77DD"></div></div>
     </div>""", unsafe_allow_html=True)
 
     # ── Active cross-filters bar ──────────────────────────────────────────────
