@@ -1396,9 +1396,9 @@ def load_seg_oriente():
     # ── 1. Leer técnicos Oriente desde hoja parámetros (I19:J29) ──────────────
     params_url = f"https://docs.google.com/spreadsheets/d/{HAINTECH_SHEET}/export?format=csv&gid=1134815886"
     df_params = pd.read_csv(params_url, encoding="utf-8", on_bad_lines="skip", header=None)
-    # col I = índice 8, col J = índice 9 · filas 19–29 del sheet = iloc[18:29]
+    # col I = índice 8, col J = índice 9 · filas 19–50 del sheet = iloc[18:50]
     tecnicos_ori = (
-        pd.concat([df_params.iloc[18:29, 8], df_params.iloc[18:29, 9]])
+        pd.concat([df_params.iloc[18:50, 8], df_params.iloc[18:50, 9]])
         .dropna()
         .astype(str)
         .str.strip()
