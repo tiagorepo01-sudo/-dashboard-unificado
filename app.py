@@ -1398,7 +1398,7 @@ def load_seg_oriente():
     df_params = pd.read_csv(params_url, encoding="utf-8", on_bad_lines="skip", header=None)
     # col I = índice 8, col J = índice 9 · filas 19–50 del sheet = iloc[18:50]
     tecnicos_ori = (
-        pd.concat([df_params.iloc[18:50, 8], df_params.iloc[18:50, 9]])
+        pd.concat([df_params.iloc[0:50, 8], df_params.iloc[0:50, 9]])
         .dropna()
         .astype(str)
         .str.strip()
@@ -1414,8 +1414,10 @@ def load_seg_oriente():
         df.rename(columns={"SF": "Fecha"}, inplace=True)
     elif "Fecha inicial" in df.columns:
         df.rename(columns={"Fecha inicial": "Fecha"}, inplace=True)
+    _cnt_raw = len(df)
     df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["Fecha"])
+    print(f"[DEBUG ORI] raw={_cnt_raw} tras dropna fecha={len(df)} (perdidos {_cnt_raw-len(df)})")
     df["Semana"] = df["Fecha"].dt.isocalendar().week.astype(int)
     if "Comuna" not in df.columns and len(df.columns) >= 3:
         df.rename(columns={df.columns[2]: "Comuna"}, inplace=True)
@@ -1428,13 +1430,18 @@ def load_seg_oriente():
         df[COL_DERIV] = pd.to_numeric(df[COL_DERIV], errors="coerce")
 
     # ── 3. Solo datos desde hoy en adelante ───────────────────────────────────
+    _cnt2 = len(df)
     df = df[df["Fecha"] >= pd.Timestamp("2026-10-27")]
+    print(f"[DEBUG ORI] tras filtro fecha >= 2026-10-27: {len(df)} (perdidos {_cnt2-len(df)})")
 
     # ── 4. Filtrar por técnicos de Oriente ────────────────────────────────────
     tec_col = next((c for c in ["Tecnico Auditado", "Técnico Auditado", "tecnico auditado"] if c in df.columns), None)
     if tec_col and tecnicos_ori:
         df[tec_col] = df[tec_col].astype(str).str.strip().str.upper()
+        _cnt3 = len(df)
         df = df[df[tec_col].isin(tecnicos_ori)]
+        print(f"[DEBUG ORI] tras filtro técnicos: {len(df)} (perdidos {_cnt3-len(df)})")
+        print(f"[DEBUG ORI] técnicos en parámetros ({len(tecnicos_ori)}): {tecnicos_ori}")
 
     return df
 
