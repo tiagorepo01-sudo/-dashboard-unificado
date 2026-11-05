@@ -1401,10 +1401,14 @@ def load_seg_oriente():
         df.rename(columns={"SF": "Fecha"}, inplace=True)
     elif "Fecha inicial" in df.columns:
         df.rename(columns={"Fecha inicial": "Fecha"}, inplace=True)
+    # ── 2. Solo desde fila 497 del sheet en adelante (índice 495 en pandas) ──
     _cnt_raw = len(df)
+    df = df.iloc[489:].reset_index(drop=True)
+    print(f"[DEBUG ORI] raw={_cnt_raw} tras corte fila 491: {len(df)}")
+
     df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["Fecha"])
-    print(f"[DEBUG ORI] raw={_cnt_raw} tras dropna fecha={len(df)} (perdidos {_cnt_raw-len(df)})")
+    print(f"[DEBUG ORI] tras dropna fecha={len(df)}")
     df["Semana"] = df["Fecha"].dt.isocalendar().week.astype(int)
     if "Comuna" not in df.columns and len(df.columns) >= 3:
         df.rename(columns={df.columns[2]: "Comuna"}, inplace=True)
@@ -1415,11 +1419,6 @@ def load_seg_oriente():
             df[col] = df[col].astype(str).str.strip()
     if COL_DERIV in df.columns:
         df[COL_DERIV] = pd.to_numeric(df[COL_DERIV], errors="coerce")
-
-    # ── 2. Solo datos desde el 27 de octubre en adelante ─────────────────────
-    _cnt2 = len(df)
-    df = df[df["Fecha"] >= pd.Timestamp("2026-10-27")]
-    print(f"[DEBUG ORI] tras filtro fecha >= 2026-10-27: {len(df)} (perdidos {_cnt2-len(df)})")
 
     return df
 
