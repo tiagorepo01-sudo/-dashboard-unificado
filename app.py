@@ -1393,20 +1393,7 @@ SEG_ORI_ACCENT = "#7F77DD"
 
 @st.cache_data(ttl=300, show_spinner="Cargando datos Seguimiento Oriente…")
 def load_seg_oriente():
-    # ── 1. Leer técnicos Oriente desde hoja parámetros (I19:J29) ──────────────
-    params_url = f"https://docs.google.com/spreadsheets/d/{HAINTECH_SHEET}/export?format=csv&gid=1134815886"
-    df_params = pd.read_csv(params_url, encoding="utf-8", on_bad_lines="skip", header=None)
-    # col I = índice 8, col J = índice 9 · filas 19–50 del sheet = iloc[18:50]
-    tecnicos_ori = (
-        pd.concat([df_params.iloc[0:50, 8], df_params.iloc[0:50, 9]])
-        .dropna()
-        .astype(str)
-        .str.strip()
-        .str.upper()
-    )
-    tecnicos_ori = tecnicos_ori[tecnicos_ori.str.len() > 0].unique().tolist()
-
-    # ── 2. Cargar data principal ───────────────────────────────────────────────
+    # ── 1. Cargar data principal ───────────────────────────────────────────────
     url = f"https://docs.google.com/spreadsheets/d/{HAINTECH_SHEET}/export?format=csv&gid=758087206"
     df = pd.read_csv(url, encoding="utf-8", on_bad_lines="skip")
     df.columns = df.columns.str.strip()
@@ -1429,19 +1416,10 @@ def load_seg_oriente():
     if COL_DERIV in df.columns:
         df[COL_DERIV] = pd.to_numeric(df[COL_DERIV], errors="coerce")
 
-    # ── 3. Solo datos desde hoy en adelante ───────────────────────────────────
+    # ── 2. Solo datos desde el 27 de octubre en adelante ─────────────────────
     _cnt2 = len(df)
     df = df[df["Fecha"] >= pd.Timestamp("2026-10-27")]
     print(f"[DEBUG ORI] tras filtro fecha >= 2026-10-27: {len(df)} (perdidos {_cnt2-len(df)})")
-
-    # ── 4. Filtrar por técnicos de Oriente ────────────────────────────────────
-    tec_col = next((c for c in ["Tecnico Auditado", "Técnico Auditado", "tecnico auditado"] if c in df.columns), None)
-    if tec_col and tecnicos_ori:
-        df[tec_col] = df[tec_col].astype(str).str.strip().str.upper()
-        _cnt3 = len(df)
-        df = df[df[tec_col].isin(tecnicos_ori)]
-        print(f"[DEBUG ORI] tras filtro técnicos: {len(df)} (perdidos {_cnt3-len(df)})")
-        print(f"[DEBUG ORI] técnicos en parámetros ({len(tecnicos_ori)}): {tecnicos_ori}")
 
     return df
 
