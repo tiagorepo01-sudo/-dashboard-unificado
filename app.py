@@ -1481,7 +1481,7 @@ with st.sidebar:
         if meses_num_sel: df = df[df["Fecha"].dt.month.isin(meses_num_sel)]
         if semanas_sel: df = df[df["Semana"].isin(semanas_sel)]
         if soporte_sel != "Todos" and "Soporte HAINTECH" in df.columns: df = df[df["Soporte HAINTECH"] == soporte_sel]
-        if estados_sel and "Estado Solicitud Inicial" in df.columns: df = df[df["Estado Solicitud Inicial"].isin(estados_sel)]
+        if estados_sel and "Estado Solicitud Inicial" in df.columns: df = df[df["Estado Solicitud Inicial"].isin(estados_sel) | df["Estado Solicitud Inicial"].isna()]
 
     # ── Seguimiento Derivaciones filters ──
     elif modulo == MODULOS[2]:
@@ -1509,9 +1509,9 @@ with st.sidebar:
         if meses_num_sel: df = df[df["Fecha"].dt.month.isin(meses_num_sel)]
         if semanas_sel: df = df[df["Semana"].isin(semanas_sel)]
         if soporte_sel != "Todos" and "Soporte HAINTECH" in df.columns: df = df[df["Soporte HAINTECH"] == soporte_sel]
-        if estados_sel and "Estado Solicitud Inicial" in df.columns: df = df[df["Estado Solicitud Inicial"].isin(estados_sel)]
+        if estados_sel and "Estado Solicitud Inicial" in df.columns: df = df[df["Estado Solicitud Inicial"].isin(estados_sel) | df["Estado Solicitud Inicial"].isna()]
         if gestion_sel != "Todas" and COL_GESTION in df.columns: df = df[df[COL_GESTION] == gestion_sel]
-        if comunas_sel and "Comuna" in df.columns: df = df[df["Comuna"].isin(comunas_sel)]
+        if comunas_sel and "Comuna" in df.columns: df = df[df["Comuna"].isin(comunas_sel) | df["Comuna"].isna()]
 
     # ── Seguimiento Oriente filters ──
     else:
