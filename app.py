@@ -1391,7 +1391,7 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
 # ══════════════════════════════════════════════════════════════════════════════
 SEG_ORI_ACCENT = "#7F77DD"
 
-@st.cache_data(ttl=300, show_spinner="Cargando datos Seguimiento Oriente…")
+@st.cache_data(ttl=60, show_spinner="Cargando datos Seguimiento Oriente…")
 def load_seg_oriente():
     # ── 1. Cargar data principal ───────────────────────────────────────────────
     url = f"https://docs.google.com/spreadsheets/d/{HAINTECH_SHEET}/export?format=csv&gid=758087206"
@@ -1517,7 +1517,7 @@ with st.sidebar:
             st.warning("No hay datos disponibles para Seguimiento Oriente.")
             st.stop()
         min_d, max_d = df_raw["Fecha"].min().date(), df_raw["Fecha"].max().date()
-        date_range = st.date_input("Período", value=(min_d, max_d), min_value=min_d, max_value=max_d, key="ori_date")
+        date_range = st.date_input("Período", value=(min_d, max_d), min_value=min_d, key="ori_date")
         MESES_ES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",7:"Julio",8:"Agosto",9:"Septiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
         meses_num = sorted(df_raw["Fecha"].dt.month.dropna().unique().tolist())
         meses_disp = [MESES_ES[m] for m in meses_num]
@@ -1534,7 +1534,9 @@ with st.sidebar:
         comunas_disp = sorted(df_raw["Comuna"].dropna().unique().tolist()) if "Comuna" in df_raw.columns else []
         comunas_sel = st.multiselect("Comuna", comunas_disp, default=comunas_disp, key="ori_com")
         start = pd.Timestamp(date_range[0]) if len(date_range) >= 1 else df_raw["Fecha"].min()
-        end   = pd.Timestamp(date_range[1]) if len(date_range) == 2 else df_raw["Fecha"].max()
+        # Usar siempre el máximo real del df para que registros nuevos no queden bloqueados por el widget congelado
+        widget_end = pd.Timestamp(date_range[1]) if len(date_range) == 2 else df_raw["Fecha"].max()
+        end = max(widget_end, df_raw["Fecha"].max())
         df = df_raw[(df_raw["Fecha"] >= start) & (df_raw["Fecha"] <= end)].copy()
         if meses_num_sel: df = df[df["Fecha"].dt.month.isin(meses_num_sel)]
         if semanas_sel: df = df[df["Semana"].isin(semanas_sel)]
