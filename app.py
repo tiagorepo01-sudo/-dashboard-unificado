@@ -509,6 +509,8 @@ def load_qa():
     date_col = "SF"
     if date_col in df.columns:
         df.rename(columns={date_col: "Fecha"}, inplace=True)
+    # Corregir años mal digitados (ej: 32026 → 2026)
+    df["Fecha"] = df["Fecha"].astype(str).str.replace(r'\b3(2026)\b', r'\1', regex=True)
     df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["Fecha"])
     df["Semana"] = df["Fecha"].dt.isocalendar().week.astype(int)
