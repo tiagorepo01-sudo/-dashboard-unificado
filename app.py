@@ -1408,7 +1408,9 @@ def load_seg_oriente():
 
     df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["Fecha"])
-    print(f"[DEBUG ORI] tras dropna fecha={len(df)}")
+    if "ID Orden" in df.columns:
+        df = df.dropna(subset=["ID Orden"])
+    print(f"[DEBUG ORI] tras dropna fecha+ID Orden={len(df)}")
     df["Semana"] = df["Fecha"].dt.isocalendar().week.astype(int)
     if "Comuna" not in df.columns and len(df.columns) >= 3:
         df.rename(columns={df.columns[2]: "Comuna"}, inplace=True)
