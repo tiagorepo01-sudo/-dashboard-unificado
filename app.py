@@ -1637,7 +1637,7 @@ def render_cert_eq_cero(df):
     st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
     st.markdown('<div class="panel-title">Detalle de registros</div>', unsafe_allow_html=True)
     st.markdown('<div class="panel-sub">Todos los casos según filtros aplicados</div>', unsafe_allow_html=True)
-    cols_show = [c for c in ["Fecha", "ID Orden", "Nombre Tecnico", "Soporte HAINTECH", "Comuna", "Potencia ONT", "Estado Solicitud Final", "Ticket de BLIP HAINTECH", "Observacion"] if c in df_xf.columns]
+    cols_show = [c for c in ["Fecha", "ID Orden", "Nombre Tecnico", "Soporte HAINTECH", "Comuna", "Potencia ONT", "RSSI - 1 IPTV", "RSSI - 2 IPTV", "RSSI - 3 IPTV", "RSSI - 4 IPTV", "RSSI - 5 IPTV", "RSSI - Extensor", "Estado Solicitud Final", "Ticket de BLIP HAINTECH", "Observacion"] if c in df_xf.columns]
     df_show = df_xf[cols_show].copy()
     df_show["Fecha"] = df_show["Fecha"].dt.strftime("%d/%m/%Y")
     if "Observacion" in df_show.columns:
