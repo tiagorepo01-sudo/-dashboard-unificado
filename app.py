@@ -1428,9 +1428,232 @@ def load_seg_oriente():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# MÓDULO 5 · CERTIFICACION EQ CERO
+# ══════════════════════════════════════════════════════════════════════════════
+CERT_ACCENT = "#E8891D"
+
+CERT_ESTADO_COLORS = {
+    "Completada correctamente":     "#0F9B8E",
+    "Completada sin Asistencia":    "#378ADD",
+    "Direccion no encontrada":      "#C83050",
+    "Sin Moradores":                "#BA7517",
+    "Cliente desiste":              "#C83050",
+    "Sin acceso a vivienda":        "#7F77DD",
+    "Pendiente":                    "#888780",
+}
+
+@st.cache_data(ttl=300, show_spinner="Cargando datos Certificacion EQ Cero…")
+def load_cert_eq_cero():
+    url = f"https://docs.google.com/spreadsheets/d/{HAINTECH_SHEET}/export?format=csv&gid=435226814"
+    df = pd.read_csv(url, encoding="utf-8", on_bad_lines="skip")
+    df.columns = df.columns.str.strip()
+    df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True, errors="coerce")
+    df = df.dropna(subset=["Fecha"])
+    df["Semana"] = df["Fecha"].dt.isocalendar().week.astype(int)
+    for col in ["Estado Solicitud Final", "Soporte HAINTECH", "Nombre Tecnico", "Comuna"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+    return df
+
+
+def render_cert_eq_cero(df):
+    kp = "cert"
+
+    # ── Cross-filter setup ────────────────────────────────────────────────────
+    seg_init_xf(kp)
+    _col_map = {
+        "est": "Estado Solicitud Final",
+        "sop": "Soporte HAINTECH",
+        "tec": "Nombre Tecnico",
+        "com": "Comuna",
+    }
+    _dim_labels = {"est": "Estado final", "sop": "Soporte", "tec": "Técnico", "com": "Comuna"}
+
+    for _dim, _sfx, _vk in [
+        ("est", "est_bar", "y"), ("est", "est_pie", "label"),
+        ("sop", "sop_bar", "y"), ("tec", "tec_bar", "y"),
+    ]:
+        _seg_proc_event(st.session_state.get(f"{kp}_{_sfx}"), kp, _dim, _vk, key_suffix=_sfx)
+
+    df_xf = seg_apply_xf(df, kp, _col_map)
+
+    # ── KPIs ──────────────────────────────────────────────────────────────────
+    total      = len(df_xf)
+    completadas = (df_xf["Estado Solicitud Final"] == "Completada correctamente").sum() if "Estado Solicitud Final" in df_xf.columns else 0
+    sin_asist  = (df_xf["Estado Solicitud Final"] == "Completada sin Asistencia").sum() if "Estado Solicitud Final" in df_xf.columns else 0
+    pct_comp   = round(completadas / total * 100, 1) if total else 0
+    kpi_color  = rank_color(pct_comp)
+
+    st.markdown(f"""
+    <div class="dash-header" style="border-bottom:3px solid {CERT_ACCENT}">
+      <div class="logo-box" style="background:{CERT_ACCENT}">HAINTECH</div>
+      <div>
+        <div class="header-title">PILOTO TÉCNICOS · CERTIFICACION EQ CERO</div>
+        <div class="header-sub">PANEL DE CONTROL · {total} órdenes filtradas</div>
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-color:{CERT_ACCENT}"><div class="kpi-value" style="color:{CERT_ACCENT}">{total}</div><div class="kpi-label">Total órdenes</div><div class="kpi-dot" style="background:{CERT_ACCENT}"></div></div>
+      <div class="kpi-card" style="border-color:#0F9B8E"><div class="kpi-value" style="color:#0F9B8E">{completadas}</div><div class="kpi-label">Completadas correctamente</div><div class="kpi-dot" style="background:#0F9B8E"></div></div>
+      <div class="kpi-card" style="border-color:#378ADD"><div class="kpi-value" style="color:#378ADD">{sin_asist}</div><div class="kpi-label">Completadas sin Asistencia</div><div class="kpi-dot" style="background:#378ADD"></div></div>
+      <div class="kpi-card" style="border-color:{kpi_color}"><div class="kpi-value" style="color:{kpi_color}">{pct_comp}%</div><div class="kpi-label">% Completitud</div><div class="kpi-dot" style="background:{kpi_color}"></div></div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── Active cross-filters bar ──────────────────────────────────────────────
+    xf_state = seg_get_xf(kp)
+    act_xf   = [(d, v) for d, v in xf_state.items() if v]
+    if act_xf:
+        pills = "".join(
+            f'<span style="background:#111827;color:#93C5FD;font-size:10px;padding:2px 10px;'
+            f'border-radius:10px;border:1px solid #1E3A5F;margin-right:4px">'
+            f'<b style="color:#60A5FA">{_dim_labels.get(d,"?")}:</b> {" · ".join(str(x) for x in v)}'
+            f'</span>'
+            for d, v in act_xf
+        )
+        st.markdown(
+            f'<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;'
+            f'margin-bottom:8px;padding:8px 14px;background:#070B14;'
+            f'border:1px solid #1A2A3A;border-left:3px solid {CERT_ACCENT};border-radius:4px">'
+            f'<span style="font-size:9px;color:#334155;text-transform:uppercase;'
+            f'letter-spacing:.1em;margin-right:6px">FILTROS ACTIVOS</span>'
+            f'{pills}'
+            f'<span style="font-size:10px;color:#334155;margin-left:auto">'
+            f'{total} de {len(df)} registros</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        _bc = st.columns([2, 8])
+        with _bc[0]:
+            if st.button("🗑 Limpiar filtros", key=f"clr_{kp}", use_container_width=True):
+                seg_clear_xf(kp)
+                st.rerun()
+
+    p_style = f'style="border-color:{CERT_ACCENT}"'
+    col1, col2, col3 = st.columns([1.1, 1.6, 1.3])
+
+    with col1:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Registro semanal</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Órdenes por semana</div>', unsafe_allow_html=True)
+        if not df_xf.empty and "Semana" in df_xf.columns:
+            weekly = df_xf.groupby("Semana").size().reset_index(name="Total").sort_values("Semana")
+            fig = go.Figure(go.Bar(x=weekly["Semana"].astype(str), y=weekly["Total"], marker_color=CERT_ACCENT,
+                text=weekly["Total"], textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+            chart_layout(fig, height=230); fig.update_xaxes(title_text="Semana ISO")
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            tbl = weekly.copy(); tbl.columns = ["Sem.", "Total"]
+            st.dataframe(tbl.set_index("Sem."), width="stretch", height=110)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Estado solicitud final</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Distribución de resultados</div>', unsafe_allow_html=True)
+        df_est = seg_apply_xf(df, kp, _col_map, exclude_dim="est")
+        if not df_est.empty and "Estado Solicitud Final" in df_est.columns:
+            sel_est = seg_get_xf(kp).get("est", [])
+            tb, tp = st.tabs(["Barras", "Donut"])
+            cnt = df_est["Estado Solicitud Final"].value_counts().reset_index(); cnt.columns = ["Estado", "Cantidad"]
+            cnt["Pct"] = (cnt["Cantidad"] / cnt["Cantidad"].sum() * 100).round(1)
+            cnt["Color"] = cnt["Estado"].map(CERT_ESTADO_COLORS).fillna("#64748b")
+            if sel_est:
+                cnt["Color"] = cnt.apply(lambda r: r["Color"] if r["Estado"] in sel_est else _hex_rgba(r["Color"], 0.22), axis=1)
+            cnt = cnt.sort_values("Cantidad", ascending=True)
+            with tb:
+                fig = go.Figure(go.Bar(x=cnt["Cantidad"], y=cnt["Estado"], orientation="h", marker_color=cnt["Color"].tolist(),
+                    text=cnt.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1), textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+                chart_layout(fig, height=310); fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
+                st.plotly_chart(fig, on_select="rerun", key="cert_est_bar", width="stretch", config={"displayModeBar": False})
+            with tp:
+                fig = go.Figure(go.Pie(labels=cnt["Estado"], values=cnt["Cantidad"], hole=0.55, marker_colors=cnt["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
+                fig.add_annotation(text=f"<b>{df_est['Estado Solicitud Final'].count()}</b><br><span style='font-size:9px'>órdenes</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
+                fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY), margin=dict(l=0, r=0, t=0, b=0), height=310, legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
+                st.plotly_chart(fig, on_select="rerun", key="cert_est_pie", width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col3:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">% Completitud por día</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Tendencia diaria</div>', unsafe_allow_html=True)
+        if not df_xf.empty and "Estado Solicitud Final" in df_xf.columns and "ID Orden" in df_xf.columns:
+            daily = df_xf.groupby("Fecha").size().reset_index(name="Total")
+            comp  = df_xf[df_xf["Estado Solicitud Final"] == "Completada correctamente"].groupby("Fecha").size().reset_index(name="Comp")
+            daily = daily.merge(comp, on="Fecha", how="left").fillna({"Comp": 0}).sort_values("Fecha")
+            daily["Pct_C"] = (daily["Comp"] / daily["Total"] * 100).round(1)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=daily["Fecha"], y=daily["Pct_C"], name="% Completada", mode="lines+markers",
+                line=dict(color="#0F9B8E", width=2), marker=dict(size=5), fill="tozeroy", fillcolor="rgba(15,155,142,0.08)"))
+            fig.add_hline(y=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="50%", annotation_font=dict(color="#353545", size=9))
+            chart_layout(fig, height=310); fig.update_yaxes(title_text="%", range=[0, 108])
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    col4, col5 = st.columns([1.1, 1.9])
+
+    with col4:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Por soporte HAINTECH</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Volumen de órdenes por agente</div>', unsafe_allow_html=True)
+        df_sop = seg_apply_xf(df, kp, _col_map, exclude_dim="sop")
+        if not df_sop.empty and "Soporte HAINTECH" in df_sop.columns:
+            sel_sop = seg_get_xf(kp).get("sop", [])
+            ag = df_sop.groupby("Soporte HAINTECH").size().reset_index(name="Total").sort_values("Total", ascending=True)
+            colors_sop = [CERT_ACCENT if (not sel_sop or r["Soporte HAINTECH"] in sel_sop) else _hex_rgba(CERT_ACCENT, 0.22) for _, r in ag.iterrows()]
+            fig = go.Figure(go.Bar(x=ag["Total"], y=ag["Soporte HAINTECH"], orientation="h", marker_color=colors_sop,
+                text=ag["Total"], textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+            chart_layout(fig, height=230); fig.update_layout(showlegend=False, margin=dict(l=8, r=50, t=14, b=8)); fig.update_xaxes(title_text="Órdenes")
+            st.plotly_chart(fig, on_select="rerun", key="cert_sop_bar", width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col5:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Top técnicos · completitud</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Top 15 por volumen — color según tasa de éxito</div>', unsafe_allow_html=True)
+        df_tec = seg_apply_xf(df, kp, _col_map, exclude_dim="tec")
+        if not df_tec.empty and "Nombre Tecnico" in df_tec.columns:
+            sel_tec = seg_get_xf(kp).get("tec", [])
+            tec = df_tec.groupby("Nombre Tecnico").size().reset_index(name="Total")
+            if "Estado Solicitud Final" in df_tec.columns:
+                comp_t = df_tec[df_tec["Estado Solicitud Final"] == "Completada correctamente"].groupby("Nombre Tecnico").size().reset_index(name="Comp")
+                tec = tec.merge(comp_t, on="Nombre Tecnico", how="left").fillna({"Comp": 0})
+                tec["Pct_Comp"] = (tec["Comp"] / tec["Total"] * 100).round(1)
+            else:
+                tec["Pct_Comp"] = 0.0
+            tec = tec.nlargest(15, "Total").sort_values("Total", ascending=True)
+            tec["BaseColor"] = tec["Pct_Comp"].apply(lambda p: "#0F9B8E" if p >= 60 else ("#BA7517" if p >= 40 else "#C83050"))
+            tec["Color"] = tec.apply(lambda r: r["BaseColor"] if (not sel_tec or r["Nombre Tecnico"] in sel_tec) else _hex_rgba(r["BaseColor"], 0.22), axis=1)
+            fig = go.Figure(go.Bar(x=tec["Total"], y=tec["Nombre Tecnico"], orientation="h", marker_color=tec["Color"].tolist(),
+                text=tec.apply(lambda r: f"{int(r['Total'])}  ({r['Pct_Comp']}%)", axis=1), textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+            chart_layout(fig, height=260); fig.update_layout(showlegend=False, margin=dict(l=8, r=110, t=14, b=8)); fig.update_xaxes(title_text="Órdenes")
+            st.plotly_chart(fig, on_select="rerun", key="cert_tec_bar", width="stretch", config={"displayModeBar": False})
+            st.caption("🟢 ≥60%   🟡 40–60%   🔴 <40%")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    render_agente_dist(df_xf, "Soporte HAINTECH", CERT_ACCENT, "cert")
+
+    # ── Tabla detalle ─────────────────────────────────────────────────────────
+    st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">Detalle de registros</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-sub">Todos los casos según filtros aplicados</div>', unsafe_allow_html=True)
+    cols_show = [c for c in ["Fecha", "ID Orden", "Nombre Tecnico", "Soporte HAINTECH", "Comuna", "Potencia ONT", "Estado Solicitud Final", "Ticket de BLIP HAINTECH", "Observacion"] if c in df_xf.columns]
+    df_show = df_xf[cols_show].copy()
+    df_show["Fecha"] = df_show["Fecha"].dt.strftime("%d/%m/%Y")
+    if "Observacion" in df_show.columns:
+        df_show["Observacion"] = df_show["Observacion"].fillna("").astype(str).str[:80]
+    df_show = df_show.fillna("—")
+    st.dataframe(df_show, width="stretch", height=280, hide_index=True)
+    st.download_button("⬇ Exportar CSV filtrado", df_xf[cols_show].assign(Fecha=df_xf["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"), "cert_eq_cero_filtrado.csv", "text/csv", key="dl_cert_det")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(f'<div class="dash-footer" style="border-color:{CERT_ACCENT}"><span>Fuente: Google Sheets · BOD Certificacion EQ CERO · Actualización automática cada 5 min</span><span>HAINTECH · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR · SELECTOR DE MÓDULO + FILTROS
 # ══════════════════════════════════════════════════════════════════════════════
-MODULOS = ["📊 Gestión NPS · Claro", "📡 QA Migración", "📋 Seguimiento Derivaciones", "🗺️ Seguimiento Oriente"]
+MODULOS = ["📊 Gestión NPS · Claro", "📡 QA Migración", "📋 Seguimiento Derivaciones", "🗺️ Seguimiento Oriente", "✅ Certificacion EQ Cero"]
 
 with st.sidebar:
     st.markdown('<div class="sidebar-section" style="color:#1D6FE8">Módulo</div>', unsafe_allow_html=True)
@@ -1514,7 +1737,7 @@ with st.sidebar:
         if comunas_sel and "Comuna" in df.columns: df = df[df["Comuna"].isin(comunas_sel) | df["Comuna"].isna()]
 
     # ── Seguimiento Oriente filters ──
-    else:
+    elif modulo == MODULOS[3]:
         df_raw = load_seg_oriente()
         if df_raw.empty or df_raw["Fecha"].isna().all():
             st.warning("No hay datos disponibles para Seguimiento Oriente.")
@@ -1548,6 +1771,30 @@ with st.sidebar:
         if gestion_sel != "Todas" and COL_GESTION in df.columns: df = df[df[COL_GESTION] == gestion_sel]
         if comunas_sel and "Comuna" in df.columns: df = df[df["Comuna"].isin(comunas_sel) | df["Comuna"].isna()]
 
+    # ── Certificacion EQ Cero filters ──
+    else:
+        df_raw = load_cert_eq_cero()
+        min_d, max_d = df_raw["Fecha"].min().date(), df_raw["Fecha"].max().date()
+        date_range = st.date_input("Período", value=(min_d, max_d), min_value=min_d, max_value=max_d, key="cert_date")
+        MESES_ES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",7:"Julio",8:"Agosto",9:"Septiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
+        meses_num = sorted(df_raw["Fecha"].dt.month.dropna().unique().tolist())
+        meses_disp = [MESES_ES[m] for m in meses_num]
+        meses_sel = st.multiselect("Mes", meses_disp, default=meses_disp, key="cert_mes")
+        meses_num_sel = [k for k,v in MESES_ES.items() if v in meses_sel]
+        semanas_disp = sorted(df_raw["Semana"].dropna().unique().tolist())
+        semanas_sel = st.multiselect("Semanas", semanas_disp, default=semanas_disp, key="cert_sem")
+        soportes = ["Todos"] + sorted(df_raw["Soporte HAINTECH"].dropna().unique().tolist()) if "Soporte HAINTECH" in df_raw.columns else ["Todos"]
+        soporte_sel = st.selectbox("Soporte HAINTECH", soportes, key="cert_sop")
+        estados_disp = df_raw["Estado Solicitud Final"].dropna().unique().tolist() if "Estado Solicitud Final" in df_raw.columns else []
+        estados_sel = st.multiselect("Estado Final", estados_disp, default=estados_disp, key="cert_est")
+        start = pd.Timestamp(date_range[0]) if len(date_range) >= 1 else df_raw["Fecha"].min()
+        end   = pd.Timestamp(date_range[1]) if len(date_range) == 2 else df_raw["Fecha"].max()
+        df = df_raw[(df_raw["Fecha"] >= start) & (df_raw["Fecha"] <= end)].copy()
+        if meses_num_sel: df = df[df["Fecha"].dt.month.isin(meses_num_sel)]
+        if semanas_sel: df = df[df["Semana"].isin(semanas_sel)]
+        if soporte_sel != "Todos" and "Soporte HAINTECH" in df.columns: df = df[df["Soporte HAINTECH"] == soporte_sel]
+        if estados_sel and "Estado Solicitud Final" in df.columns: df = df[df["Estado Solicitud Final"].isin(estados_sel)]
+
     st.markdown("---")
     st.markdown('<p style="font-size:10px;color:#353545;text-align:center">Datos actualizados automáticamente<br>desde Google Sheets</p>', unsafe_allow_html=True)
     if st.button("🔄  Recargar datos", use_container_width=True):
@@ -1562,5 +1809,7 @@ elif modulo == MODULOS[1]:
     render_qa(df)
 elif modulo == MODULOS[2]:
     render_seg(df)
-else:
+elif modulo == MODULOS[3]:
     render_seg(df, nombre="ORIENTE", accent=SEG_ORI_ACCENT, key_prefix="segor")
+else:
+    render_cert_eq_cero(df)
