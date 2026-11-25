@@ -1651,9 +1651,232 @@ def render_cert_eq_cero(df):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# MÓDULO 6 · CONTROL DIARIO DIR
+# ══════════════════════════════════════════════════════════════════════════════
+CTRL_DIR_SHEET  = "1SB_BJjAPvqFsROYLI2Rqg4hP3kbc730HmI0BM47byJc"
+CTRL_DIR_ACCENT = "#16A34A"
+
+CTRL_DIR_ESTADO_COLORS = {
+    "RESUELTO":              "#0F9B8E",
+    "DIR SIN PROBLEMAS":     "#378ADD",
+    "DIRECCION INCORRECTA":  "#C83050",
+    "PENDIENTE":             "#BA7517",
+    "EN PROCESO":            "#E8891D",
+    "CERRADO":               "#888780",
+}
+
+@st.cache_data(ttl=300, show_spinner="Cargando datos Control Diario DIR…")
+def load_ctrl_dir():
+    url = f"https://docs.google.com/spreadsheets/d/{CTRL_DIR_SHEET}/export?format=csv&gid=64548804"
+    df = pd.read_csv(url, encoding="utf-8", on_bad_lines="skip")
+    df.columns = df.columns.str.strip()
+    # Reemplazar valores Excel N/A
+    df.replace("#N/D", pd.NA, inplace=True)
+    df["Fecha"] = pd.to_datetime(df["FECHA ESCALAMIENTO"], dayfirst=True, errors="coerce")
+    df = df.dropna(subset=["Fecha"])
+    df["Semana"] = df["Fecha"].dt.isocalendar().week.astype(int)
+    for col in ["ESTADO DE REVISIÓN", "AREA RESPONSABLE", "ENCARGADO", "TIPO DE ACTIVIDAD", "COMUNA", "RESPONSABLE"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+    return df
+
+
+def render_ctrl_dir(df):
+    kp = "ctrl"
+
+    # ── Cross-filter setup ────────────────────────────────────────────────────
+    seg_init_xf(kp)
+    _col_map = {
+        "est":  "ESTADO DE REVISIÓN",
+        "area": "AREA RESPONSABLE",
+        "enc":  "ENCARGADO",
+        "tipo": "TIPO DE ACTIVIDAD",
+    }
+    _dim_labels = {"est": "Estado", "area": "Área", "enc": "Encargado", "tipo": "Tipo"}
+
+    for _dim, _sfx, _vk in [
+        ("est", "est_bar", "y"), ("est", "est_pie", "label"),
+        ("area", "area_bar", "y"), ("enc", "enc_bar", "y"), ("tipo", "tipo_bar", "y"),
+    ]:
+        _seg_proc_event(st.session_state.get(f"{kp}_{_sfx}"), kp, _dim, _vk, key_suffix=_sfx)
+
+    df_xf = seg_apply_xf(df, kp, _col_map)
+
+    # ── KPIs ──────────────────────────────────────────────────────────────────
+    total      = len(df_xf)
+    resueltos  = (df_xf["ESTADO DE REVISIÓN"] == "RESUELTO").sum() if "ESTADO DE REVISIÓN" in df_xf.columns else 0
+    pct_res    = round(resueltos / total * 100, 1) if total else 0
+    kpi_color  = rank_color(pct_res)
+    pendientes = total - resueltos
+
+    st.markdown(f"""
+    <div class="dash-header" style="border-bottom:3px solid {CTRL_DIR_ACCENT}">
+      <div class="logo-box" style="background:{CTRL_DIR_ACCENT}">HAINTECH</div>
+      <div>
+        <div class="header-title">CONTROL DIARIO DIR</div>
+        <div class="header-sub">PANEL DE CONTROL · {total} registros filtrados</div>
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-color:{CTRL_DIR_ACCENT}"><div class="kpi-value" style="color:{CTRL_DIR_ACCENT}">{total}</div><div class="kpi-label">Total reclamos</div><div class="kpi-dot" style="background:{CTRL_DIR_ACCENT}"></div></div>
+      <div class="kpi-card" style="border-color:#0F9B8E"><div class="kpi-value" style="color:#0F9B8E">{resueltos}</div><div class="kpi-label">Resueltos</div><div class="kpi-dot" style="background:#0F9B8E"></div></div>
+      <div class="kpi-card" style="border-color:#C83050"><div class="kpi-value" style="color:#C83050">{pendientes}</div><div class="kpi-label">Sin resolver</div><div class="kpi-dot" style="background:#C83050"></div></div>
+      <div class="kpi-card" style="border-color:{kpi_color}"><div class="kpi-value" style="color:{kpi_color}">{pct_res}%</div><div class="kpi-label">% Resueltos</div><div class="kpi-dot" style="background:{kpi_color}"></div></div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── Active cross-filters bar ──────────────────────────────────────────────
+    xf_state = seg_get_xf(kp)
+    act_xf   = [(d, v) for d, v in xf_state.items() if v]
+    if act_xf:
+        pills = "".join(
+            f'<span style="background:#111827;color:#93C5FD;font-size:10px;padding:2px 10px;'
+            f'border-radius:10px;border:1px solid #1E3A5F;margin-right:4px">'
+            f'<b style="color:#60A5FA">{_dim_labels.get(d,"?")}:</b> {" · ".join(str(x) for x in v)}'
+            f'</span>'
+            for d, v in act_xf
+        )
+        st.markdown(
+            f'<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;'
+            f'margin-bottom:8px;padding:8px 14px;background:#070B14;'
+            f'border:1px solid #1A2A3A;border-left:3px solid {CTRL_DIR_ACCENT};border-radius:4px">'
+            f'<span style="font-size:9px;color:#334155;text-transform:uppercase;'
+            f'letter-spacing:.1em;margin-right:6px">FILTROS ACTIVOS</span>'
+            f'{pills}'
+            f'<span style="font-size:10px;color:#334155;margin-left:auto">'
+            f'{total} de {len(df)} registros</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        _bc = st.columns([2, 8])
+        with _bc[0]:
+            if st.button("🗑 Limpiar filtros", key=f"clr_{kp}", use_container_width=True):
+                seg_clear_xf(kp)
+                st.rerun()
+
+    p_style = f'style="border-color:{CTRL_DIR_ACCENT}"'
+    col1, col2, col3 = st.columns([1.1, 1.6, 1.3])
+
+    with col1:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Registro semanal</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Reclamos ingresados por semana</div>', unsafe_allow_html=True)
+        if not df_xf.empty and "Semana" in df_xf.columns:
+            weekly = df_xf.groupby("Semana").size().reset_index(name="Total").sort_values("Semana")
+            fig = go.Figure(go.Bar(x=weekly["Semana"].astype(str), y=weekly["Total"], marker_color=CTRL_DIR_ACCENT,
+                text=weekly["Total"], textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+            chart_layout(fig, height=230); fig.update_xaxes(title_text="Semana ISO")
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            tbl = weekly.copy(); tbl.columns = ["Sem.", "Total"]
+            st.dataframe(tbl.set_index("Sem."), width="stretch", height=110)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Estado de revisión</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Distribución de estados</div>', unsafe_allow_html=True)
+        df_est = seg_apply_xf(df, kp, _col_map, exclude_dim="est")
+        if not df_est.empty and "ESTADO DE REVISIÓN" in df_est.columns:
+            sel_est = seg_get_xf(kp).get("est", [])
+            tb, tp = st.tabs(["Barras", "Donut"])
+            cnt = df_est["ESTADO DE REVISIÓN"].value_counts().reset_index(); cnt.columns = ["Estado", "Cantidad"]
+            cnt["Pct"] = (cnt["Cantidad"] / cnt["Cantidad"].sum() * 100).round(1)
+            cnt["Color"] = cnt["Estado"].map(CTRL_DIR_ESTADO_COLORS).fillna("#64748b")
+            if sel_est:
+                cnt["Color"] = cnt.apply(lambda r: r["Color"] if r["Estado"] in sel_est else _hex_rgba(r["Color"], 0.22), axis=1)
+            cnt = cnt.sort_values("Cantidad", ascending=True)
+            with tb:
+                fig = go.Figure(go.Bar(x=cnt["Cantidad"], y=cnt["Estado"], orientation="h", marker_color=cnt["Color"].tolist(),
+                    text=cnt.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1), textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+                chart_layout(fig, height=310); fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
+                st.plotly_chart(fig, on_select="rerun", key="ctrl_est_bar", width="stretch", config={"displayModeBar": False})
+            with tp:
+                fig = go.Figure(go.Pie(labels=cnt["Estado"], values=cnt["Cantidad"], hole=0.55, marker_colors=cnt["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
+                fig.add_annotation(text=f"<b>{df_est['ESTADO DE REVISIÓN'].count()}</b><br><span style='font-size:9px'>reclamos</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
+                fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY), margin=dict(l=0, r=0, t=0, b=0), height=310, legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
+                st.plotly_chart(fig, on_select="rerun", key="ctrl_est_pie", width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col3:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">% Resueltos por día</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Tendencia diaria</div>', unsafe_allow_html=True)
+        if not df_xf.empty and "ESTADO DE REVISIÓN" in df_xf.columns:
+            daily = df_xf.groupby("Fecha").size().reset_index(name="Total")
+            comp  = df_xf[df_xf["ESTADO DE REVISIÓN"] == "RESUELTO"].groupby("Fecha").size().reset_index(name="Res")
+            daily = daily.merge(comp, on="Fecha", how="left").fillna({"Res": 0}).sort_values("Fecha")
+            daily["Pct"] = (daily["Res"] / daily["Total"] * 100).round(1)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=daily["Fecha"], y=daily["Pct"], name="% Resueltos", mode="lines+markers",
+                line=dict(color=CTRL_DIR_ACCENT, width=2), marker=dict(size=5), fill="tozeroy", fillcolor="rgba(22,163,74,0.08)"))
+            fig.add_hline(y=50, line_dash="dash", line_color="#353545", line_width=1, annotation_text="50%", annotation_font=dict(color="#353545", size=9))
+            chart_layout(fig, height=310); fig.update_yaxes(title_text="%", range=[0, 108])
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    col4, col5 = st.columns([1.1, 1.9])
+
+    with col4:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Por área responsable</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Volumen de reclamos por área</div>', unsafe_allow_html=True)
+        df_area = seg_apply_xf(df, kp, _col_map, exclude_dim="area")
+        if not df_area.empty and "AREA RESPONSABLE" in df_area.columns:
+            sel_area = seg_get_xf(kp).get("area", [])
+            ag = df_area.groupby("AREA RESPONSABLE").size().reset_index(name="Total").sort_values("Total", ascending=True)
+            colors_area = [CTRL_DIR_ACCENT if (not sel_area or r["AREA RESPONSABLE"] in sel_area) else _hex_rgba(CTRL_DIR_ACCENT, 0.22) for _, r in ag.iterrows()]
+            fig = go.Figure(go.Bar(x=ag["Total"], y=ag["AREA RESPONSABLE"], orientation="h", marker_color=colors_area,
+                text=ag["Total"], textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+            chart_layout(fig, height=230); fig.update_layout(showlegend=False, margin=dict(l=8, r=50, t=14, b=8)); fig.update_xaxes(title_text="Reclamos")
+            st.plotly_chart(fig, on_select="rerun", key="ctrl_area_bar", width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col5:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">Por encargado</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Top 15 — color según % resueltos</div>', unsafe_allow_html=True)
+        df_enc = seg_apply_xf(df, kp, _col_map, exclude_dim="enc")
+        if not df_enc.empty and "ENCARGADO" in df_enc.columns:
+            sel_enc = seg_get_xf(kp).get("enc", [])
+            enc = df_enc.groupby("ENCARGADO").size().reset_index(name="Total")
+            if "ESTADO DE REVISIÓN" in df_enc.columns:
+                res_enc = df_enc[df_enc["ESTADO DE REVISIÓN"] == "RESUELTO"].groupby("ENCARGADO").size().reset_index(name="Res")
+                enc = enc.merge(res_enc, on="ENCARGADO", how="left").fillna({"Res": 0})
+                enc["Pct"] = (enc["Res"] / enc["Total"] * 100).round(1)
+            else:
+                enc["Pct"] = 0.0
+            enc = enc.nlargest(15, "Total").sort_values("Total", ascending=True)
+            enc["BaseColor"] = enc["Pct"].apply(lambda p: "#0F9B8E" if p >= 60 else ("#BA7517" if p >= 40 else "#C83050"))
+            enc["Color"] = enc.apply(lambda r: r["BaseColor"] if (not sel_enc or r["ENCARGADO"] in sel_enc) else _hex_rgba(r["BaseColor"], 0.22), axis=1)
+            fig = go.Figure(go.Bar(x=enc["Total"], y=enc["ENCARGADO"], orientation="h", marker_color=enc["Color"].tolist(),
+                text=enc.apply(lambda r: f"{int(r['Total'])}  ({r['Pct']}%)", axis=1), textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+            chart_layout(fig, height=260); fig.update_layout(showlegend=False, margin=dict(l=8, r=110, t=14, b=8)); fig.update_xaxes(title_text="Reclamos")
+            st.plotly_chart(fig, on_select="rerun", key="ctrl_enc_bar", width="stretch", config={"displayModeBar": False})
+            st.caption("🟢 ≥60%   🟡 40–60%   🔴 <40%")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Tabla detalle ─────────────────────────────────────────────────────────
+    st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">Detalle de registros</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-sub">Todos los casos según filtros aplicados</div>', unsafe_allow_html=True)
+    cols_show = [c for c in ["Fecha", "ID RECLAMO", "TICKET ONNET", "COMUNA", "TIPO DE ACTIVIDAD", "DIR", "ESTADO DE REVISIÓN", "RESPONSABLE", "AREA RESPONSABLE", "ENCARGADO", "OBSERVACIÓN ACTUALIZACIÓN"] if c in df_xf.columns]
+    df_show = df_xf[cols_show].copy()
+    df_show["Fecha"] = df_show["Fecha"].dt.strftime("%d/%m/%Y")
+    if "OBSERVACIÓN ACTUALIZACIÓN" in df_show.columns:
+        df_show["OBSERVACIÓN ACTUALIZACIÓN"] = df_show["OBSERVACIÓN ACTUALIZACIÓN"].fillna("").astype(str).str[:80]
+    df_show = df_show.fillna("—")
+    st.dataframe(df_show, width="stretch", height=280, hide_index=True)
+    st.download_button("⬇ Exportar CSV filtrado", df_xf[cols_show].assign(Fecha=df_xf["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(index=False).encode("utf-8"), "control_diario_dir_filtrado.csv", "text/csv", key="dl_ctrl_det")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(f'<div class="dash-footer" style="border-color:{CTRL_DIR_ACCENT}"><span>Fuente: Google Sheets · Control Diario DIR · Actualización automática cada 5 min</span><span>HAINTECH · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR · SELECTOR DE MÓDULO + FILTROS
 # ══════════════════════════════════════════════════════════════════════════════
-MODULOS = ["📊 Gestión NPS · Claro", "📡 QA Migración", "📋 Seguimiento Derivaciones", "🗺️ Seguimiento Oriente", "✅ Certificacion EQ Cero"]
+MODULOS = ["📊 Gestión NPS · Claro", "📡 QA Migración", "📋 Seguimiento Derivaciones", "🗺️ Seguimiento Oriente", "✅ Certificacion EQ Cero", "📁 Control Diario DIR"]
 
 with st.sidebar:
     st.markdown('<div class="sidebar-section" style="color:#1D6FE8">Módulo</div>', unsafe_allow_html=True)
@@ -1795,6 +2018,33 @@ with st.sidebar:
         if soporte_sel != "Todos" and "Soporte HAINTECH" in df.columns: df = df[df["Soporte HAINTECH"] == soporte_sel]
         if estados_sel and "Estado Solicitud Final" in df.columns: df = df[df["Estado Solicitud Final"].isin(estados_sel)]
 
+    # ── Control Diario DIR filters ──
+    else:
+        df_raw = load_ctrl_dir()
+        min_d, max_d = df_raw["Fecha"].min().date(), df_raw["Fecha"].max().date()
+        date_range = st.date_input("Período", value=(min_d, max_d), min_value=min_d, max_value=max_d, key="ctrl_date")
+        MESES_ES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",7:"Julio",8:"Agosto",9:"Septiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
+        meses_num = sorted(df_raw["Fecha"].dt.month.dropna().unique().tolist())
+        meses_disp = [MESES_ES[m] for m in meses_num]
+        meses_sel = st.multiselect("Mes", meses_disp, default=meses_disp, key="ctrl_mes")
+        meses_num_sel = [k for k,v in MESES_ES.items() if v in meses_sel]
+        semanas_disp = sorted(df_raw["Semana"].dropna().unique().tolist())
+        semanas_sel = st.multiselect("Semanas", semanas_disp, default=semanas_disp, key="ctrl_sem")
+        estados_disp = df_raw["ESTADO DE REVISIÓN"].dropna().unique().tolist() if "ESTADO DE REVISIÓN" in df_raw.columns else []
+        estados_sel = st.multiselect("Estado", estados_disp, default=estados_disp, key="ctrl_est")
+        areas_disp = sorted(df_raw["AREA RESPONSABLE"].dropna().unique().tolist()) if "AREA RESPONSABLE" in df_raw.columns else []
+        area_sel = st.selectbox("Área responsable", ["Todas"] + areas_disp, key="ctrl_area")
+        enc_disp = ["Todos"] + sorted(df_raw["ENCARGADO"].dropna().unique().tolist()) if "ENCARGADO" in df_raw.columns else ["Todos"]
+        enc_sel = st.selectbox("Encargado", enc_disp, key="ctrl_enc")
+        start = pd.Timestamp(date_range[0]) if len(date_range) >= 1 else df_raw["Fecha"].min()
+        end   = pd.Timestamp(date_range[1]) if len(date_range) == 2 else df_raw["Fecha"].max()
+        df = df_raw[(df_raw["Fecha"] >= start) & (df_raw["Fecha"] <= end)].copy()
+        if meses_num_sel: df = df[df["Fecha"].dt.month.isin(meses_num_sel)]
+        if semanas_sel: df = df[df["Semana"].isin(semanas_sel)]
+        if estados_sel and "ESTADO DE REVISIÓN" in df.columns: df = df[df["ESTADO DE REVISIÓN"].isin(estados_sel)]
+        if area_sel != "Todas" and "AREA RESPONSABLE" in df.columns: df = df[df["AREA RESPONSABLE"] == area_sel]
+        if enc_sel != "Todos" and "ENCARGADO" in df.columns: df = df[df["ENCARGADO"] == enc_sel]
+
     st.markdown("---")
     st.markdown('<p style="font-size:10px;color:#353545;text-align:center">Datos actualizados automáticamente<br>desde Google Sheets</p>', unsafe_allow_html=True)
     if st.button("🔄  Recargar datos", use_container_width=True):
@@ -1811,5 +2061,7 @@ elif modulo == MODULOS[2]:
     render_seg(df)
 elif modulo == MODULOS[3]:
     render_seg(df, nombre="ORIENTE", accent=SEG_ORI_ACCENT, key_prefix="segor")
-else:
+elif modulo == MODULOS[4]:
     render_cert_eq_cero(df)
+else:
+    render_ctrl_dir(df)
