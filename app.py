@@ -1815,46 +1815,19 @@ def render_ctrl_dir(df):
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
-    col4, col5 = st.columns([1.1, 1.9])
-
-    with col4:
-        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-title">Por área responsable</div>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-sub">Volumen de reclamos por área</div>', unsafe_allow_html=True)
-        df_area = seg_apply_xf(df, kp, _col_map, exclude_dim="area")
-        if not df_area.empty and "AREA RESPONSABLE" in df_area.columns:
-            sel_area = seg_get_xf(kp).get("area", [])
-            ag = df_area.groupby("AREA RESPONSABLE").size().reset_index(name="Total").sort_values("Total", ascending=True)
-            colors_area = [CTRL_DIR_ACCENT if (not sel_area or r["AREA RESPONSABLE"] in sel_area) else _hex_rgba(CTRL_DIR_ACCENT, 0.22) for _, r in ag.iterrows()]
-            fig = go.Figure(go.Bar(x=ag["Total"], y=ag["AREA RESPONSABLE"], orientation="h", marker_color=colors_area,
-                text=ag["Total"], textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
-            chart_layout(fig, height=230); fig.update_layout(showlegend=False, margin=dict(l=8, r=50, t=14, b=8)); fig.update_xaxes(title_text="Reclamos")
-            st.plotly_chart(fig, on_select="rerun", key="ctrl_area_bar", width="stretch", config={"displayModeBar": False})
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col5:
-        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-title">Por encargado</div>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-sub">Top 15 — color según % resueltos</div>', unsafe_allow_html=True)
-        df_enc = seg_apply_xf(df, kp, _col_map, exclude_dim="enc")
-        if not df_enc.empty and "ENCARGADO" in df_enc.columns:
-            sel_enc = seg_get_xf(kp).get("enc", [])
-            enc = df_enc.groupby("ENCARGADO").size().reset_index(name="Total")
-            if "ESTADO DE REVISIÓN" in df_enc.columns:
-                res_enc = df_enc[df_enc["ESTADO DE REVISIÓN"] == "RESUELTO"].groupby("ENCARGADO").size().reset_index(name="Res")
-                enc = enc.merge(res_enc, on="ENCARGADO", how="left").fillna({"Res": 0})
-                enc["Pct"] = (enc["Res"] / enc["Total"] * 100).round(1)
-            else:
-                enc["Pct"] = 0.0
-            enc = enc.nlargest(15, "Total").sort_values("Total", ascending=True)
-            enc["BaseColor"] = enc["Pct"].apply(lambda p: "#0F9B8E" if p >= 60 else ("#BA7517" if p >= 40 else "#C83050"))
-            enc["Color"] = enc.apply(lambda r: r["BaseColor"] if (not sel_enc or r["ENCARGADO"] in sel_enc) else _hex_rgba(r["BaseColor"], 0.22), axis=1)
-            fig = go.Figure(go.Bar(x=enc["Total"], y=enc["ENCARGADO"], orientation="h", marker_color=enc["Color"].tolist(),
-                text=enc.apply(lambda r: f"{int(r['Total'])}  ({r['Pct']}%)", axis=1), textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
-            chart_layout(fig, height=260); fig.update_layout(showlegend=False, margin=dict(l=8, r=110, t=14, b=8)); fig.update_xaxes(title_text="Reclamos")
-            st.plotly_chart(fig, on_select="rerun", key="ctrl_enc_bar", width="stretch", config={"displayModeBar": False})
-            st.caption("🟢 ≥60%   🟡 40–60%   🔴 <40%")
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">Por área responsable</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-sub">Volumen de reclamos por área</div>', unsafe_allow_html=True)
+    df_area = seg_apply_xf(df, kp, _col_map, exclude_dim="area")
+    if not df_area.empty and "AREA RESPONSABLE" in df_area.columns:
+        sel_area = seg_get_xf(kp).get("area", [])
+        ag = df_area.groupby("AREA RESPONSABLE").size().reset_index(name="Total").sort_values("Total", ascending=True)
+        colors_area = [CTRL_DIR_ACCENT if (not sel_area or r["AREA RESPONSABLE"] in sel_area) else _hex_rgba(CTRL_DIR_ACCENT, 0.22) for _, r in ag.iterrows()]
+        fig = go.Figure(go.Bar(x=ag["Total"], y=ag["AREA RESPONSABLE"], orientation="h", marker_color=colors_area,
+            text=ag["Total"], textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+        chart_layout(fig, height=230); fig.update_layout(showlegend=False, margin=dict(l=8, r=50, t=14, b=8)); fig.update_xaxes(title_text="Reclamos")
+        st.plotly_chart(fig, on_select="rerun", key="ctrl_area_bar", width="stretch", config={"displayModeBar": False})
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # ── Tabla detalle ─────────────────────────────────────────────────────────
     st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
