@@ -1995,7 +1995,7 @@ with st.sidebar:
         if comunas_sel and "Comuna" in df.columns: df = df[df["Comuna"].isin(comunas_sel) | df["Comuna"].isna()]
 
     # ── Certificacion EQ Cero filters ──
-    else:
+    elif modulo == MODULOS[4]:
         df_raw = load_cert_eq_cero()
         min_d, max_d = df_raw["Fecha"].min().date(), df_raw["Fecha"].max().date()
         date_range = st.date_input("Período", value=(min_d, max_d), min_value=min_d, max_value=max_d, key="cert_date")
