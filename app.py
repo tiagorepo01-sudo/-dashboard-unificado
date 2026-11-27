@@ -527,17 +527,20 @@ def render_qa(df, source_name="QA Migración"):
 
     # ── Cross-filter setup ────────────────────────────────────────────────────
     seg_init_xf(kp)
+    COL_DERIV_QA = "¿Por que Tecnico Quiso Derivar?"
     _col_map = {
         "est": "Estado Solicitud Inicial",
+        "der": COL_DERIV_QA,
         "sop": "Soporte HAINTECH",
         "int": COL_INTERV,
         "tec": tec_col,
     }
-    _dim_labels = {"est": "Estado inicial", "sop": "Soporte", "int": "Intervención", "tec": "Técnico"}
+    _dim_labels = {"est": "Estado inicial", "der": "Motivo derivación", "sop": "Soporte", "int": "Intervención", "tec": "Técnico"}
 
     # ── Process all chart selection events BEFORE computing df_xf ───────────
     for _dim, _sfx, _vk in [
         ("est", "est_bar", "y"), ("est", "est_pie", "label"),
+        ("der", "der_bar", "y"), ("der", "der_pie", "label"),
         ("sop", "sop_bar", "y"), ("int", "int_pie", "label"), ("tec", "tec_bar", "y"),
     ]:
         _seg_proc_event(st.session_state.get(f"{kp}_{_sfx}"), kp, _dim, _vk, key_suffix=_sfx)
@@ -603,7 +606,7 @@ def render_qa(df, source_name="QA Migración"):
                 st.rerun()
 
     p_style = f'style="border-color:{QA_ACCENT}"'
-    col1, col2, col3 = st.columns([1.1, 1.6, 1.3])
+    col1, col2, col2b, col3 = st.columns([1.0, 1.4, 1.4, 1.2])
 
     with col1:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
@@ -647,6 +650,32 @@ def render_qa(df, source_name="QA Migración"):
                 fig.add_annotation(text=f"<b>{df_est['Estado Solicitud Inicial'].count()}</b><br><span style='font-size:9px'>órdenes</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14,color="white",family="Barlow Condensed"))
                 fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR,family=FONT_FAMILY), margin=dict(l=0,r=0,t=0,b=0), height=310, legend=dict(bgcolor=CHART_BG,bordercolor=GRID_COLOR,font=dict(size=9),x=1.0,y=0.5))
                 st.plotly_chart(fig, on_select="rerun", key="qa_est_pie", width="stretch", config={"displayModeBar": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col2b:
+        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">¿Por qué derivó?</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel-sub">Motivo de derivación del técnico</div>', unsafe_allow_html=True)
+        df_der = seg_apply_xf(df, kp, _col_map, exclude_dim="der")
+        if not df_der.empty and COL_DERIV_QA in df_der.columns:
+            sel_der = seg_get_xf(kp).get("der", [])
+            tb, tp = st.tabs(["Barras","Donut"])
+            cnt = df_der[COL_DERIV_QA].value_counts().reset_index(); cnt.columns = ["Motivo","Cantidad"]
+            cnt["Pct"] = (cnt["Cantidad"]/cnt["Cantidad"].sum()*100).round(1)
+            cnt["Color"] = cnt["Motivo"].map(QA_ESTADO_COLORS).fillna("#64748b")
+            if sel_der:
+                cnt["Color"] = cnt.apply(lambda r: r["Color"] if r["Motivo"] in sel_der else _hex_rgba(r["Color"], 0.22), axis=1)
+            cnt = cnt.sort_values("Cantidad", ascending=True)
+            with tb:
+                fig = go.Figure(go.Bar(x=cnt["Cantidad"], y=cnt["Motivo"], orientation="h", marker_color=cnt["Color"].tolist(),
+                    text=cnt.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1), textposition="outside", textfont=dict(size=10,color=TEXT_COLOR)))
+                chart_layout(fig, height=310); fig.update_layout(showlegend=False, margin=dict(l=8,r=90,t=14,b=8))
+                st.plotly_chart(fig, on_select="rerun", key="qa_der_bar", width="stretch", config={"displayModeBar": False})
+            with tp:
+                fig = go.Figure(go.Pie(labels=cnt["Motivo"], values=cnt["Cantidad"], hole=0.55, marker_colors=cnt["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
+                fig.add_annotation(text=f"<b>{df_der[COL_DERIV_QA].count()}</b><br><span style='font-size:9px'>derivaciones</span>", x=0.5, y=0.5, showarrow=False, font=dict(size=14,color="white",family="Barlow Condensed"))
+                fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR,family=FONT_FAMILY), margin=dict(l=0,r=0,t=0,b=0), height=310, legend=dict(bgcolor=CHART_BG,bordercolor=GRID_COLOR,font=dict(size=9),x=1.0,y=0.5))
+                st.plotly_chart(fig, on_select="rerun", key="qa_der_pie", width="stretch", config={"displayModeBar": False})
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col3:
@@ -724,7 +753,7 @@ def render_qa(df, source_name="QA Migración"):
     st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
     st.markdown('<div class="panel-title">Detalle de registros</div>', unsafe_allow_html=True)
     st.markdown('<div class="panel-sub">Todos los casos según filtros aplicados</div>', unsafe_allow_html=True)
-    cols_show = [c for c in ["Fecha","ID Orden","Tecnico Auditado","Soporte HAINTECH","Estado Solicitud Inicial","¿Por que Tecnico Quiso Derivar?", COL_INTERV, COL_COMP,"Estado Solicitud Final","Observacion"] if c in df_xf.columns]
+    cols_show = [c for c in ["Fecha","ID Orden","Tecnico Auditado","Soporte HAINTECH","Estado Solicitud Inicial", COL_INTERV, COL_COMP,"Estado Solicitud Final","Observacion"] if c in df_xf.columns]
     df_show = df_xf[cols_show].copy()
     df_show["Fecha"] = df_show["Fecha"].dt.strftime("%d/%m/%Y")
     if "Observacion" in df_show.columns:
