@@ -1123,7 +1123,15 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg", s
                     st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-    if has_escalada:
+    if show_ini_deriv:
+        # Estado Final ya está en la fila superior — no incluir col2
+        if has_escalada:
+            col3, col2b, col1 = st.columns([1.5, 1.3, 1.2])
+        else:
+            col3, col1 = st.columns([1.7, 1.3])
+            col2b = None
+        col2 = None
+    elif has_escalada:
         col2, col3, col2b, col1 = st.columns([1.3, 1.2, 1.1, 1.0])
     else:
         col2, col3, col1 = st.columns([1.5, 1.2, 1.0])
@@ -1173,49 +1181,49 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg", s
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ── PANEL: Estado solicitud final (omitido si ya se mostró en fila superior) ──
-    with col2:
-      if not show_ini_deriv:
-        st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-title">Estado solicitud final</div>', unsafe_allow_html=True)
-        st.markdown('<div class="panel-sub">Resultado final después de la gestión</div>', unsafe_allow_html=True)
-        df_ef = seg_apply_xf(df, kp, _col_map, exclude_dim="ef")
-        if not df_ef.empty and "Estado Solicitud Final" in df_ef.columns:
-            fc_all = df_ef["Estado Solicitud Final"].replace("nan", pd.NA).dropna()
-            if not fc_all.empty:
-                tb_f, tp_f = st.tabs(["Barras", "Donut"])
-                fc = fc_all.value_counts().reset_index(); fc.columns = ["Estado", "Cantidad"]
-                fc["Pct"] = (fc["Cantidad"] / fc["Cantidad"].sum() * 100).round(1)
-                fc["Color"] = fc["Estado"].map(SEG_ESTADO_FIN_COLORS).fillna("#64748b")
-                fc = fc.sort_values("Cantidad", ascending=True)
-                sel_ef = seg_get_xf(kp).get("ef", [])
-                ef_colors = [
-                    c if (not sel_ef or e in sel_ef) else _hex_rgba(c, 0.22)
-                    for e, c in zip(fc["Estado"], fc["Color"])
-                ]
-                with tb_f:
-                    fig = go.Figure(go.Bar(x=fc["Cantidad"], y=fc["Estado"], orientation="h",
-                        marker_color=ef_colors,
-                        text=fc.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
-                        textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
-                    chart_layout(fig, height=310)
-                    fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                    on_select="rerun", key=f"{kp}_ef_bar")
-                with tp_f:
-                    fig = go.Figure(go.Pie(labels=fc["Estado"], values=fc["Cantidad"], hole=0.55,
-                        marker_colors=fc["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
-                    fig.add_annotation(text=f"<b>{fc_all.count()}</b><br><span style='font-size:9px'>órdenes</span>",
-                        x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
-                    fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
-                        margin=dict(l=0, r=0, t=0, b=0), height=310,
-                        legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
-                    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
-                                    on_select="rerun", key=f"{kp}_ef_pie")
+    if col2 is not None:
+        with col2:
+            st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-title">Estado solicitud final</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-sub">Resultado final después de la gestión</div>', unsafe_allow_html=True)
+            df_ef = seg_apply_xf(df, kp, _col_map, exclude_dim="ef")
+            if not df_ef.empty and "Estado Solicitud Final" in df_ef.columns:
+                fc_all = df_ef["Estado Solicitud Final"].replace("nan", pd.NA).dropna()
+                if not fc_all.empty:
+                    tb_f, tp_f = st.tabs(["Barras", "Donut"])
+                    fc = fc_all.value_counts().reset_index(); fc.columns = ["Estado", "Cantidad"]
+                    fc["Pct"] = (fc["Cantidad"] / fc["Cantidad"].sum() * 100).round(1)
+                    fc["Color"] = fc["Estado"].map(SEG_ESTADO_FIN_COLORS).fillna("#64748b")
+                    fc = fc.sort_values("Cantidad", ascending=True)
+                    sel_ef = seg_get_xf(kp).get("ef", [])
+                    ef_colors = [
+                        c if (not sel_ef or e in sel_ef) else _hex_rgba(c, 0.22)
+                        for e, c in zip(fc["Estado"], fc["Color"])
+                    ]
+                    with tb_f:
+                        fig = go.Figure(go.Bar(x=fc["Cantidad"], y=fc["Estado"], orientation="h",
+                            marker_color=ef_colors,
+                            text=fc.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
+                            textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+                        chart_layout(fig, height=310)
+                        fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
+                        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                        on_select="rerun", key=f"{kp}_ef_bar")
+                    with tp_f:
+                        fig = go.Figure(go.Pie(labels=fc["Estado"], values=fc["Cantidad"], hole=0.55,
+                            marker_colors=fc["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
+                        fig.add_annotation(text=f"<b>{fc_all.count()}</b><br><span style='font-size:9px'>órdenes</span>",
+                            x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
+                        fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
+                            margin=dict(l=0, r=0, t=0, b=0), height=310,
+                            legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
+                        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False},
+                                        on_select="rerun", key=f"{kp}_ef_pie")
+                else:
+                    st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
             else:
                 st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
     # ── PANEL: M escalada eco ─────────────────────────────────────────────────
     if col2b is not None:
