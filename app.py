@@ -884,13 +884,14 @@ def _seg_proc_event(event, kp, dim, val_key="y", key_suffix=None):
     return True
 
 
-def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
+def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg", show_ini_deriv=False):
     kp = key_prefix
 
     # ── Detect dynamic columns at top level ──────────────────────────────────
     COL_ESC_ECO  = next((c for c in df.columns if c.strip().lower() in ("m escalada eco", "escalada a eco")), None)
     COL_MOTIVO   = next((c for c in df.columns if "por que no se puede" in c.strip().lower() or "por qué no se puede" in c.strip().lower()), None)
     COL_DUCTO    = next((c for c in df.columns if "ducto tapado" in c.strip().lower()), None)
+    COL_DERIV_P  = "¿Por que Tecnico Quiso Derivar?"
     tec_col_seg  = next((c for c in ["Tecnico Auditado", "Técnico Auditado", "tecnico auditado"] if c in df.columns), None)
     has_escalada = COL_ESC_ECO is not None and not df[COL_ESC_ECO].replace("nan", pd.NA).dropna().empty
 
@@ -898,6 +899,8 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
     seg_init_xf(kp)
     _col_map = {
         "ef":  "Estado Solicitud Final",
+        "est": "Estado Solicitud Inicial",
+        "der": COL_DERIV_P,
         "mot": COL_MOTIVO,
         "duc": COL_DUCTO,
         "esc": COL_ESC_ECO,
@@ -906,7 +909,8 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
         "tec": tec_col_seg,
     }
     _dim_labels = {
-        "ef": "Estado final", "mot": "Motivo no efectuación", "duc": "Ducto tapado",
+        "ef": "Estado final", "est": "Estado inicial", "der": "Motivo derivación",
+        "mot": "Motivo no efectuación", "duc": "Ducto tapado",
         "esc": "Escalada ECO", "ges": "Gestión", "sop": "Soporte", "tec": "Técnico",
     }
 
@@ -919,6 +923,10 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
         ("mot", "mot_pie",  "label"),
         ("ef",  "ef_bar",   "y"),
         ("ef",  "ef_pie",   "label"),
+        ("est", "est_bar",  "y"),
+        ("est", "est_pie",  "label"),
+        ("der", "der_bar",  "y"),
+        ("der", "der_pie",  "label"),
         ("esc", "esc_bar",  "y"),
         ("esc", "esc_pie",  "label"),
         ("duc", "duc_bar",  "y"),
@@ -1006,6 +1014,115 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
         st.markdown(f'<div class="dash-footer" style="border-color:{accent}"><span>Fuente: Google Sheets · Seguimiento {nombre} · Actualización automática cada 5 min</span><span>HAINTECH · {datetime.now().strftime("%d/%m/%Y %H:%M")}</span></div>', unsafe_allow_html=True)
         return
 
+    # ── FILA EXTRA: Estado Inicial | ¿Por qué derivó? | Estado Final ────────
+    if show_ini_deriv:
+        col_est, col_der, col_ef0 = st.columns([1.3, 1.3, 1.3])
+
+        with col_est:
+            st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-title">Estado solicitud inicial</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-sub">Distribución de motivos de apertura</div>', unsafe_allow_html=True)
+            df_est = seg_apply_xf(df, kp, _col_map, exclude_dim="est")
+            est_all = df_est["Estado Solicitud Inicial"].replace("nan", pd.NA).dropna() if not df_est.empty and "Estado Solicitud Inicial" in df_est.columns else pd.Series(dtype=str)
+            if not est_all.empty:
+                tb_e0, tp_e0 = st.tabs(["Barras", "Donut"])
+                ec0 = est_all.value_counts().reset_index(); ec0.columns = ["Estado", "Cantidad"]
+                ec0["Pct"] = (ec0["Cantidad"] / ec0["Cantidad"].sum() * 100).round(1)
+                ec0["Color"] = ec0["Estado"].map(SEG_ESTADO_INI_COLORS).fillna("#64748b")
+                sel_est = seg_get_xf(kp).get("est", [])
+                if sel_est:
+                    ec0["Color"] = ec0.apply(lambda r: r["Color"] if r["Estado"] in sel_est else _hex_rgba(r["Color"], 0.22), axis=1)
+                ec0 = ec0.sort_values("Cantidad", ascending=True)
+                with tb_e0:
+                    fig = go.Figure(go.Bar(x=ec0["Cantidad"], y=ec0["Estado"], orientation="h",
+                        marker_color=ec0["Color"].tolist(),
+                        text=ec0.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
+                        textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+                    chart_layout(fig, height=310); fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
+                    st.plotly_chart(fig, on_select="rerun", key=f"{kp}_est_bar", width="stretch", config={"displayModeBar": False})
+                with tp_e0:
+                    fig = go.Figure(go.Pie(labels=ec0["Estado"], values=ec0["Cantidad"], hole=0.55,
+                        marker_colors=ec0["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
+                    fig.add_annotation(text=f"<b>{est_all.count()}</b><br><span style='font-size:9px'>órdenes</span>",
+                        x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
+                    fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
+                        margin=dict(l=0, r=0, t=0, b=0), height=310,
+                        legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
+                    st.plotly_chart(fig, on_select="rerun", key=f"{kp}_est_pie", width="stretch", config={"displayModeBar": False})
+            else:
+                st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with col_der:
+            st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-title">¿Por qué derivó?</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-sub">Motivo de derivación del técnico</div>', unsafe_allow_html=True)
+            df_der = seg_apply_xf(df, kp, _col_map, exclude_dim="der")
+            der_all = df_der[COL_DERIV_P].replace("nan", pd.NA).dropna() if not df_der.empty and COL_DERIV_P in df_der.columns else pd.Series(dtype=str)
+            if not der_all.empty:
+                tb_dr, tp_dr = st.tabs(["Barras", "Donut"])
+                dc = der_all.value_counts().reset_index(); dc.columns = ["Motivo", "Cantidad"]
+                dc["Pct"] = (dc["Cantidad"] / dc["Cantidad"].sum() * 100).round(1)
+                dc["Color"] = dc["Motivo"].map(SEG_ESTADO_INI_COLORS).fillna("#64748b")
+                sel_der = seg_get_xf(kp).get("der", [])
+                if sel_der:
+                    dc["Color"] = dc.apply(lambda r: r["Color"] if r["Motivo"] in sel_der else _hex_rgba(r["Color"], 0.22), axis=1)
+                dc = dc.sort_values("Cantidad", ascending=True)
+                with tb_dr:
+                    fig = go.Figure(go.Bar(x=dc["Cantidad"], y=dc["Motivo"], orientation="h",
+                        marker_color=dc["Color"].tolist(),
+                        text=dc.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
+                        textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+                    chart_layout(fig, height=310); fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
+                    st.plotly_chart(fig, on_select="rerun", key=f"{kp}_der_bar", width="stretch", config={"displayModeBar": False})
+                with tp_dr:
+                    fig = go.Figure(go.Pie(labels=dc["Motivo"], values=dc["Cantidad"], hole=0.55,
+                        marker_colors=dc["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
+                    fig.add_annotation(text=f"<b>{der_all.count()}</b><br><span style='font-size:9px'>derivaciones</span>",
+                        x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
+                    fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
+                        margin=dict(l=0, r=0, t=0, b=0), height=310,
+                        legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
+                    st.plotly_chart(fig, on_select="rerun", key=f"{kp}_der_pie", width="stretch", config={"displayModeBar": False})
+            else:
+                st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with col_ef0:
+            st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-title">Estado solicitud final</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-sub">Resultado final después de la gestión</div>', unsafe_allow_html=True)
+            df_ef0 = seg_apply_xf(df, kp, _col_map, exclude_dim="ef")
+            if not df_ef0.empty and "Estado Solicitud Final" in df_ef0.columns:
+                fc0_all = df_ef0["Estado Solicitud Final"].replace("nan", pd.NA).dropna()
+                if not fc0_all.empty:
+                    tb_f0, tp_f0 = st.tabs(["Barras", "Donut"])
+                    fc0 = fc0_all.value_counts().reset_index(); fc0.columns = ["Estado", "Cantidad"]
+                    fc0["Pct"] = (fc0["Cantidad"] / fc0["Cantidad"].sum() * 100).round(1)
+                    fc0["Color"] = fc0["Estado"].map(SEG_ESTADO_FIN_COLORS).fillna("#64748b")
+                    fc0 = fc0.sort_values("Cantidad", ascending=True)
+                    sel_ef0 = seg_get_xf(kp).get("ef", [])
+                    ef0_colors = [c if (not sel_ef0 or e in sel_ef0) else _hex_rgba(c, 0.22) for e, c in zip(fc0["Estado"], fc0["Color"])]
+                    with tb_f0:
+                        fig = go.Figure(go.Bar(x=fc0["Cantidad"], y=fc0["Estado"], orientation="h",
+                            marker_color=ef0_colors,
+                            text=fc0.apply(lambda r: f"{r['Cantidad']}  {r['Pct']}%", axis=1),
+                            textposition="outside", textfont=dict(size=10, color=TEXT_COLOR)))
+                        chart_layout(fig, height=310); fig.update_layout(showlegend=False, margin=dict(l=8, r=90, t=14, b=8))
+                        st.plotly_chart(fig, on_select="rerun", key=f"{kp}_ef_bar", width="stretch", config={"displayModeBar": False})
+                    with tp_f0:
+                        fig = go.Figure(go.Pie(labels=fc0["Estado"], values=fc0["Cantidad"], hole=0.55,
+                            marker_colors=fc0["Color"].tolist(), textfont=dict(size=10), textinfo="percent"))
+                        fig.add_annotation(text=f"<b>{fc0_all.count()}</b><br><span style='font-size:9px'>órdenes</span>",
+                            x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="white", family="Barlow Condensed"))
+                        fig.update_layout(paper_bgcolor=CHART_BG, font=dict(color=TEXT_COLOR, family=FONT_FAMILY),
+                            margin=dict(l=0, r=0, t=0, b=0), height=310,
+                            legend=dict(bgcolor=CHART_BG, bordercolor=GRID_COLOR, font=dict(size=9), x=1.0, y=0.5))
+                        st.plotly_chart(fig, on_select="rerun", key=f"{kp}_ef_pie", width="stretch", config={"displayModeBar": False})
+                else:
+                    st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
     if has_escalada:
         col2, col3, col2b, col1 = st.columns([1.3, 1.2, 1.1, 1.0])
     else:
@@ -1055,8 +1172,9 @@ def render_seg(df, nombre="DERIVACIONES", accent=SEG_ACCENT, key_prefix="seg"):
             st.markdown('<div style="padding:40px 0;text-align:center;color:#334155;font-size:12px">Sin datos para los filtros activos</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── PANEL: Estado solicitud final ─────────────────────────────────────────
+    # ── PANEL: Estado solicitud final (omitido si ya se mostró en fila superior) ──
     with col2:
+      if not show_ini_deriv:
         st.markdown(f'<div class="panel" {p_style}>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Estado solicitud final</div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-sub">Resultado final después de la gestión</div>', unsafe_allow_html=True)
@@ -2082,7 +2200,7 @@ elif modulo == MODULOS[1]:
 elif modulo == MODULOS[2]:
     render_seg(df)
 elif modulo == MODULOS[3]:
-    render_seg(df, nombre="ORIENTE", accent=SEG_ORI_ACCENT, key_prefix="segor")
+    render_seg(df, nombre="ORIENTE", accent=SEG_ORI_ACCENT, key_prefix="segor", show_ini_deriv=True)
 elif modulo == MODULOS[4]:
     render_cert_eq_cero(df)
 else:
